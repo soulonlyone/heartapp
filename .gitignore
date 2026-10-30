@@ -62,3 +62,7 @@ heartapp-selfsigned.cer
 *.swp
 Thumbs.db
 desktop.ini
+
+# 测试截图残留
+_qt_shot.png
+_old_shot.png
