@@ -7,6 +7,10 @@
 
 ## 1. 这个项目是什么
 
+产品方向：PC 游戏 / 工作期间的心率监控，以会话、基线和手动事件时间轴为核心，
+不推断情绪。设计依据见 [docs/pc-monitor-design.md](docs/pc-monitor-design.md)。
+Qt 为新交互入口，Tk 保留旧版兼容界面。
+
 Windows 桌面工具：通过**蓝牙 BLE** 从智能手表实时读取心率并记录到 SQLite，
 支持历史查询、区间统计、CSV 导出。成品是免安装 exe（PyInstaller 打包）。
 
@@ -18,7 +22,7 @@ Windows 桌面工具：通过**蓝牙 BLE** 从智能手表实时读取心率并
 
 | 层 | 选择 | 说明 |
 |---|---|---|
-| 语言 | Python 3.9 | venv 在 `.venv/`（**必须用这个**，系统 Python 3.12 装不了 bleak） |
+| 语言 | Python 3.9 | venv 在 `.venv/`（使用项目独立虚拟环境；已在 Python 3.12 验证 bleak 1.1.1） |
 | BLE | `bleak` 1.1.x + `winrt-*` 3.2.1 | 异步 API |
 | 存储 | 标准库 `sqlite3` | 无 ORM |
 | GUI | **PySide6-Essentials 6.10.x**（Qt 6） | 主界面 |

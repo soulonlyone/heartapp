@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -46,6 +46,19 @@ CREATE TABLE IF NOT EXISTS samples (
     contact    INTEGER,
     rr_ms      REAL
 );
+
+CREATE TABLE IF NOT EXISTS pc_sessions (
+    session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    activity TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS session_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    t_offset REAL NOT NULL,
+    label TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_session ON session_events(session_id, t_offset);
 
 CREATE INDEX IF NOT EXISTS idx_samples_session ON samples(session_id, t_offset);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
@@ -365,6 +378,44 @@ class HeartRateStore:
                         "" if s.rr_ms is None else f"{s.rr_ms:.1f}",
                     ]
                 )
+        return target
+
+    def set_pc_context(self, session_id: int, title: str, activity: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("INSERT OR REPLACE INTO pc_sessions VALUES (?, ?, ?)",
+                               (session_id, title[:120], activity))
+
+    def pc_context(self, session_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute("SELECT title, activity FROM pc_sessions WHERE session_id=?",
+                                     (session_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_event(self, session_id: int, t_offset: float, label: str) -> None:
+        label = label.strip()[:120]
+        if not label or t_offset < 0:
+            raise ValueError("事件需要名称和非负时间")
+        with self._lock, self._conn:
+            self._conn.execute("INSERT INTO session_events(session_id,t_offset,label) VALUES(?,?,?)",
+                               (session_id, t_offset, label))
+
+    def session_events(self, session_id: int) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute("SELECT t_offset,label FROM session_events WHERE session_id=? ORDER BY t_offset,id",
+                                      (session_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def export_events_csv(self, session_id: int, path: Union[str, Path]) -> Path:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", newline="", encoding="utf-8-sig") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["相对秒", "事件"])
+            for event in self.session_events(session_id):
+                label = event["label"]
+                if label.startswith(("=", "+", "-", "@")):
+                    label = "'" + label
+                writer.writerow([f"{event['t_offset']:.3f}", label])
         return target
 
     # -- 设置 -------------------------------------------------------------
