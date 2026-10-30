@@ -71,7 +71,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 115 个）
+# 跑全部单元测试（当前 124 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）
@@ -103,6 +103,12 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 只改文档时可以跳过。
 
 ## 6. UI 设计约定（很重要，别随手改配色）
+
+> **⚠️ 界面视觉正在重新设计**，由 Codex 基于 GPT Image 的设计产物实现。
+> 下面这一节描述的是**当前实现的既有约定**，用来读懂现有代码；
+> 新的视觉方案以设计产物为准，**不要用这一节去否决新设计**。
+> 重新设计时保持：`theme.py` 作为唯一令牌来源、控件自绘走 `QPainter`、
+> 业务逻辑不依赖 UI。
 
 当前风格是**克制的精密感**（Apple Health / Linear 那一类），不是彩色玻璃。
 
