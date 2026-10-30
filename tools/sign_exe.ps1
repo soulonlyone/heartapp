@@ -1,4 +1,4 @@
-﻿# 给 dist\ 下的所有 exe 打自签名代码签名，并确保本机信任这张证书。
+# 给 dist\ 下的所有 exe 打自签名代码签名，并确保本机信任这张证书。
 #
 #   pwsh -NoProfile -ExecutionPolicy Bypass -File tools\sign_exe.ps1
 #
@@ -22,6 +22,18 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 function Say($msg) { if (-not $Quiet) { Write-Host $msg } }
+
+# 从某些宿主进程（例如 python 的 subprocess）启动时，模块自动加载可能没生效，
+# 导致 Cert: 驱动器不存在。显式把证书提供程序拉起来，否则会被误判成「没有证书」。
+if (-not (Get-PSDrive -Name Cert -ErrorAction SilentlyContinue)) {
+    Import-Module Microsoft.PowerShell.Security -ErrorAction SilentlyContinue
+    Import-Module PKI -ErrorAction SilentlyContinue
+}
+if (-not (Get-PSDrive -Name Cert -ErrorAction SilentlyContinue)) {
+    Say "[x] 当前会话没有 Cert: 证书驱动器，无法读写证书存储。"
+    Say "    请在普通 PowerShell 窗口里运行本脚本，或双击「给exe签名.bat」。"
+    exit 2
+}
 
 # --- 1) 找或生成证书 ------------------------------------------------------
 $cert = Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue |

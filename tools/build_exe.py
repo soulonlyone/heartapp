@@ -264,11 +264,13 @@ def sign_outputs() -> None:
     if not script.exists():
         return
     print("\n给 exe 签名 …")
-    shell = "powershell"
+    # 优先用 pwsh：Windows PowerShell 5.1 作为子进程启动时，Cert: 驱动器
+    # 有时不会自动挂载，脚本会误判成「没有证书」。
+    shell = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
     try:
         code = subprocess.run(
             [shell, "-NoProfile", "-ExecutionPolicy", "Bypass",
-             "-File", str(script), "-Quiet"],
+             "-File", str(script)],
             cwd=str(ROOT),
         ).returncode
     except Exception as exc:  # noqa: BLE001

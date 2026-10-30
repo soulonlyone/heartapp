@@ -1,4 +1,4 @@
-"""heartapp —— 从智能手表（BLE 标准心率服务）实时读取并记录心率。
+"""heartapp —— 从智能手表（BLE 标准心率服务）实时读取心率，按 PC 会话记录。
 
 典型用法::
 
@@ -8,8 +8,9 @@
     store = HeartRateStore("heartrate.db")
     engine = Engine(store)
     engine.start()
-    engine.connect_simulator("interval")   # 或 engine.connect_device("你的手表名称")
-    engine.start_recording()
+    engine.connect_simulator("gaming")     # 或 engine.connect_device("你的手表名称")
+    engine.start_pc_recording("晚间排位", "游戏")
+    engine.mark_event("开局")
     ...
     engine.stop_recording()
     engine.shutdown()
@@ -17,7 +18,7 @@
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 APP_NAME = "心率记录仪"
 APP_NAME_EN = "HeartApp"
 
