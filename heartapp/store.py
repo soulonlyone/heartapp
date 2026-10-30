@@ -191,13 +191,13 @@ class HeartRateStore:
 
     def close_stale_sessions(self, *, note: str = "程序上次未正常退出") -> int:
         """把上次崩溃/强杀留下的未结束会话收尾，避免出现永远「进行中」的记录。"""
-        now = isoformat(datetime.now())
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE sessions SET ended_at = ? ,"
+                "UPDATE sessions SET ended_at = COALESCE("
+                " (SELECT MAX(ts) FROM samples WHERE session_id = sessions.id), started_at),"
                 " note = COALESCE(note || ' | ', '') || ?"
                 " WHERE ended_at IS NULL",
-                (now, note),
+                (note,),
             )
             self._conn.commit()
             return cur.rowcount
@@ -266,7 +266,7 @@ class HeartRateStore:
         ]
         if not payload:
             return 0
-        with self._lock:
+        with self._lock, self._conn:
             self._conn.executemany(
                 "INSERT INTO samples(session_id, ts, t_offset, bpm, contact, rr_ms)"
                 " VALUES(?, ?, ?, ?, ?, ?)",
@@ -278,7 +278,6 @@ class HeartRateStore:
                 " WHERE id = ?",
                 (session_id,),
             )
-            self._conn.commit()
         return len(payload)
 
     def session_samples(

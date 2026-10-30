@@ -341,9 +341,9 @@ class Engine:
                 return
             if devices:
                 hr_count = sum(1 for d in devices if d.has_heart_rate)
-                detail = f"扫描到 {len(devices)} 个设备，其中 {hr_count} 个在广播心率"
+                detail = f"扫描到 {len(devices)} 个设备，其中 {hr_count} 个广播包包含心率服务"
                 if hr_count == 0:
-                    detail += "。找不到手表广播？请确认手表已开「心率广播」且没被手机连着。"
+                    detail += "。没有 ♥ 标记也可以选择设备连接后检查心率服务。"
             else:
                 detail = "没有扫描到任何设备。请确认电脑蓝牙已打开、手表已开启「心率广播」。"
             self._status(STATE_IDLE, detail)
@@ -440,7 +440,7 @@ class Engine:
         self._session_id = session_id
         self._session_start = started_at
         self._pending = []
-        self._last_flush = started_at.timestamp()
+        self._last_flush = time.monotonic()
         self._emit(
             "session_started",
             session_id=session_id,
@@ -479,11 +479,13 @@ class Engine:
     def _flush(self) -> None:
         if not self._pending or self._session_id is None:
             return
-        batch, self._pending = self._pending, []
+        batch = self._pending
         try:
             self.store.add_samples(self._session_id, batch)
         except Exception as exc:  # noqa: BLE001
             self._emit("error", message=f"写入数据库失败：{exc}")
+            raise
+        self._pending = []
         self._last_flush = time.monotonic()
 
     def _on_sample(self, sample: HeartRateSample) -> None:
