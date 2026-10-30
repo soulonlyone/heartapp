@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 
 from ... import __version__
 from ...simulator import DEFAULT_PROFILE, PROFILES
-from .editorial import BrandMark, Button, Curve, INK, MUTED, Navigation, PAPER, RED, RULE, Reading, label, serif
+from .editorial import BrandMark, Button, CapsuleCombo, Curve, INK, MUTED, Navigation, PAPER, RED, RULE, Reading, label, serif
 
 
 class EditorialLayout:
@@ -106,7 +106,7 @@ class EditorialLayout:
         self._sim_chip = QCheckBox("模拟演示 · 不是真实心率")
         self._sim_chip.toggled.connect(self._on_sim_toggled)
         layout.addWidget(self._sim_chip)
-        self._profile_combo = QComboBox()
+        self._profile_combo = CapsuleCombo()
         for key in ("gaming", "desktop", "rest"):
             self._profile_combo.addItem(PROFILES[key], key)
         layout.addWidget(self._profile_combo)
@@ -160,7 +160,7 @@ class EditorialLayout:
         chart_header = QHBoxLayout()
         chart_header.addWidget(label("心率曲线", 13))
         chart_header.addStretch()
-        self._live_range = QComboBox()
+        self._live_range = CapsuleCombo()
         self._live_range.addItem("最近 5 分钟", 300)
         self._live_range.addItem("最近 30 分钟", 1800)
         self._live_range.addItem("本次全程", 0)

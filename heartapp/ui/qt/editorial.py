@@ -9,7 +9,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QListView, QPushButton, QStyledItemDelegate, QStyle, QWidget
 
 from ...metrics import format_duration
 
@@ -44,7 +44,7 @@ class Button(QPushButton):
         super().__init__(text)
         self.primary = primary
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(36)
+        self.setFixedHeight(36)
         self.set_variant("primary" if primary else "text")
 
     def set_variant(self, variant: str) -> None:
@@ -53,13 +53,86 @@ class Button(QPushButton):
             QPushButton {{ color: {'white' if self.primary else INK};
                 background: {RED if self.primary else 'transparent'};
                 border: {'none' if self.primary else '1px solid ' + RULE};
-                border-radius: {16 if self.primary else 5}px; padding: 7px 18px; font-size: 13px; }}
+                border-radius: 18px; padding: 7px 18px; font-size: 13px; }}
             QPushButton:hover {{ background: {'#D93223' if self.primary else '#F0ECE4'}; }}
             QPushButton:disabled {{ color: #AAA69E; background: #F0EDE7; }}
         """)
 
     def set_text(self, text: str) -> None:
         self.setText(text)
+
+
+class MenuItem(QStyledItemDelegate):
+    def paint(self, painter, option, index) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        selected = bool(option.state & (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver))
+        rect = QRectF(option.rect).adjusted(4, 2, -4, -2)
+        if selected:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#F8EAE4"))
+            painter.drawRoundedRect(rect, 8, 8)
+        painter.setFont(option.font)
+        painter.setPen(QColor(INK))
+        painter.drawText(rect.adjusted(12, 0, -26, 0), Qt.AlignmentFlag.AlignVCenter, str(index.data()))
+        if selected:
+            painter.setBrush(QColor(RED))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(QPointF(rect.right() - 15, rect.center().y()), 3, 3)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setHeight(38)
+        return size
+
+
+class CapsuleCombo(QComboBox):
+    """胶囊选择器，自绘细箭头，弹出菜单使用独立的圆角行。"""
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFixedHeight(36)
+        self.setMinimumWidth(154)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFont(QFont("Microsoft YaHei UI", 10))
+        view = QListView()
+        view.setMouseTracking(True)
+        view.setItemDelegate(MenuItem(view))
+        view.setStyleSheet(f"QListView {{ background: {PAPER}; border: none; padding: 5px; outline: none; }}")
+        self.setView(view)
+        self._open = False
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(RED if self._open else RULE), 1))
+        painter.setBrush(QColor("#F4F0E9" if self.underMouse() else PAPER))
+        painter.drawRoundedRect(QRectF(.5, .5, self.width() - 1, 35), 18, 18)
+        painter.setFont(self.font())
+        painter.setPen(QColor(INK))
+        text = painter.fontMetrics().elidedText(self.currentText(), Qt.TextElideMode.ElideRight, self.width() - 52)
+        painter.drawText(QRectF(17, 0, self.width() - 52, 36), Qt.AlignmentFlag.AlignVCenter, text)
+        x, y = self.width() - 23, 18
+        path = QPainterPath(QPointF(x - 4, y + (2 if self._open else -2)))
+        path.lineTo(x, y + (-2 if self._open else 2))
+        path.lineTo(x + 4, y + (2 if self._open else -2))
+        painter.setPen(QPen(QColor(MUTED), 1.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+
+    def showPopup(self) -> None:
+        self.view().setMinimumWidth(max(190, self.width()))
+        self._open = True
+        super().showPopup()
+        container = self.view().window()
+        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        container.setStyleSheet(f"QFrame {{ background: {PAPER}; border: 1px solid {RULE}; border-radius: 12px; }}")
+        self.update()
+
+    def hidePopup(self) -> None:
+        self._open = False
+        super().hidePopup()
+        self.update()
 
 
 class BrandMark(QWidget):

@@ -103,6 +103,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 
 - 暖白画布 `#FBF9F4`、墨色衬线数字、朱红 `#F13D2B` 数据曲线，细线分隔。
 - 顶部文字导航：实时 / 回看 / 小窗；单一连续画布，不恢复卡片仪表盘布局。
+- 操作按钮统一为 36px 高的胶囊形，非编辑下拉使用 CapsuleCombo，保持箭头与弹出菜单风格一致。
 - Qt 新界面绘制在 `editorial.py`，页面构建在 `editorial_layout.py`，事件与业务在 `app.py`。
 - 游戏小窗必须保留，手动事件标记与运动区间不出现在默认流程中。
 - 原 `theme.py`、旧控件与 Tk 界面保留兼容；D 版的配色和数字字体集中在 `editorial.py`。
