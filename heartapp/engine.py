@@ -51,6 +51,10 @@ FLUSH_EVERY = 8
 #: 最长多久强制落库一次，避免低频采样时数据长时间只在内存里
 FLUSH_MAX_SECONDS = 5.0
 
+#: 写库失败后的退避时间。失败时缓存保留，等这么久再重试，
+#: 避免每来一个采样就重试一次、把错误日志刷满。
+FLUSH_RETRY_SECONDS = 3.0
+
 Event = Tuple[str, Dict[str, Any]]
 
 
@@ -87,6 +91,7 @@ class Engine:
         self._session_start: Optional[datetime] = None
         self._pending: List[Tuple[datetime, float, int, Optional[bool], Optional[float]]] = []
         self._last_flush = 0.0
+        self._flush_backoff_until = 0.0
         self._device_lock = threading.RLock()
 
         self.state = STATE_IDLE
@@ -454,7 +459,9 @@ class Engine:
         if self._session_id is None:
             return None
         session_id = self._session_id
-        self._flush()
+        # 停止时必须确保缓存写进去：写失败就抛，让用户看到错误、会话保持进行中，
+        # 恢复后可以再点一次「停止记录」把数据补写进去，而不是静默丢数据。
+        self._flush(raise_on_error=True)
         self.store.end_session(session_id, ended_at=datetime.now())
         stats = self.session_stats(session_id)
         self._session_id = None
@@ -476,17 +483,34 @@ class Engine:
         """结束记录。``wait=True`` 时返回统计，否则通过 ``session_ended`` 事件给出。"""
         return self._dispatch(self._stop_recording_impl, wait=wait, result_timeout=timeout)
 
-    def _flush(self) -> None:
+    def _flush(self, *, raise_on_error: bool = False) -> None:
+        """把缓存中的样本批量写库。
+
+        写库失败时**保留缓存**（不丢数据），并且：
+
+        * ``raise_on_error=True``（停止记录时）—— 向上抛，让用户看到明确的错误，
+          会话保持「进行中」，恢复后可以再点停止把数据补写进去；
+        * ``raise_on_error=False``（采集过程中）—— 只报错不抛。异常若从这里冒出去，
+          会被 ``_runner`` 捕获并结束数据源任务，导致**采集中断但界面仍显示记录中**。
+          这里退避重试，保证采集不被打断。
+        """
         if not self._pending or self._session_id is None:
+            return
+        now = time.monotonic()
+        if not raise_on_error and now < self._flush_backoff_until:
             return
         batch = self._pending
         try:
             self.store.add_samples(self._session_id, batch)
         except Exception as exc:  # noqa: BLE001
             self._emit("error", message=f"写入数据库失败：{exc}")
-            raise
+            self._flush_backoff_until = now + FLUSH_RETRY_SECONDS
+            if raise_on_error:
+                raise
+            return
         self._pending = []
-        self._last_flush = time.monotonic()
+        self._flush_backoff_until = 0.0
+        self._last_flush = now
 
     def _on_sample(self, sample: HeartRateSample) -> None:
         self._emit("sample", sample=sample)
@@ -499,6 +523,7 @@ class Engine:
         self._pending.append((sample.ts, t_offset, sample.bpm, sample.contact, rr_first))
         now = time.monotonic()
         if len(self._pending) >= FLUSH_EVERY or (now - self._last_flush) >= FLUSH_MAX_SECONDS:
+            # 采集路径绝不抛异常：抛了会顺着 source.run 冒到 _runner，把数据源任务干掉
             self._flush()
 
     # ------------------------------------------------------------------
