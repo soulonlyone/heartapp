@@ -52,6 +52,17 @@ def pump(seconds: float) -> None:
         time.sleep(0.02)
 
 
+def overlay_visible() -> bool:
+    """同时检查原生窗口；Qt 的 isVisible 可能看不到 Windows 隐藏 owner 工具窗。"""
+    overlay = window._overlay
+    if sys.platform == "win32":
+        import ctypes
+        return overlay.isVisible() and bool(
+            ctypes.windll.user32.IsWindowVisible(ctypes.c_void_p(int(overlay.winId())))
+        )
+    return overlay.isVisible()
+
+
 try:
     print("[1] 窗口构建")
     pump(1.2)
@@ -76,7 +87,35 @@ try:
     window._update_pc_reading()
     if window._overlay.bpm is not None:
         problems.append("过期读数仍显示为实时心率")
-    pump(8.0)
+    print("    最小化主窗口，检查小窗与持续采样")
+    samples_before = window._rec_n
+    window.showMinimized()
+    pump(3.0)
+    if not window.isMinimized() or not overlay_visible():
+        problems.append("主窗口最小化后小窗消失")
+    if window._rec_n <= samples_before or window._overlay.bpm is None:
+        problems.append("主窗口最小化后小窗读数或记录未更新")
+    window.on_overlay_toggle()
+    window.on_overlay_toggle()
+    window._passthrough.setChecked(True)
+    pump(0.2)
+    window._passthrough.setChecked(False)
+    pump(0.2)
+    if not overlay_visible() or not window.isMinimized():
+        problems.append("主窗口最小化时切换小窗或穿透设置异常")
+    window.showNormal()
+    pump(0.3)
+    if not overlay_visible():
+        problems.append("还原主窗口后小窗消失")
+    window.on_overlay_toggle()
+    window.showMinimized()
+    pump(0.2)
+    window.showNormal()
+    pump(0.2)
+    if overlay_visible():
+        problems.append("主窗口最小化或还原擅自打开已隐藏的小窗")
+    window.on_overlay_toggle()
+    pump(4.0)
     if window._overlay_hotkey.registered:
         import ctypes
         ctypes.windll.user32.PostThreadMessageW(ctypes.windll.kernel32.GetCurrentThreadId(),
@@ -187,6 +226,8 @@ finally:
     except Exception:
         pass
     window.close()
+    if overlay_visible():
+        problems.append("退出主窗口后小窗未关闭")
 
 print()
 if problems:

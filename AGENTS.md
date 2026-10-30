@@ -119,6 +119,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 
 ### Qt 特有的坑
 
+- 游戏小窗必须是无父窗口的独立顶层工具窗；Windows 会在主窗口最小化时隐藏它拥有的
+  工具窗。主窗口保存 `_overlay` 引用并在退出时显式关闭，禁止重新添加父窗口。
 - 圆角下拉弹窗：透明属性和无边框标志必须在首次显示前设置；QSS 的圆角不会裁剪
   原生窗口及子控件，需在 Show / Resize 时同步圆角 mask。菜单底色由 QListView 绘制，
   viewport 禁用自动填底；不要只在 `showPopup()` 之后加透明属性（Windows 暗色模式会露黑角）。

@@ -192,7 +192,7 @@ class HeartAppWindow(EditorialLayout, QWidget):
 
         self._build_ui()
         self._refresh_history()
-        self._overlay = Overlay(self, self.store)
+        self._overlay = Overlay(self.store)
         self._overlay.set_passthrough(self._passthrough.isChecked())
         self._overlay_hotkey = GlobalHotkey(self.on_overlay_toggle)
         if not self._overlay_hotkey.registered:

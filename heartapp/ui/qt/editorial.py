@@ -533,8 +533,10 @@ class GlobalHotkey(QAbstractNativeEventFilter):
 
 
 class Overlay(QWidget):
-    def __init__(self, parent: QWidget, store) -> None:
-        super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
+    def __init__(self, store) -> None:
+        # Windows 会在 owner 最小化时隐藏其工具窗口。独立顶层小窗由主窗口持有引用，
+        # 退出时显式关闭，不能把主窗口设为 Qt / 原生父窗口。
+        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
                          Qt.WindowType.WindowStaysOnTopHint)
         self.store = store
         self.bpm = None
