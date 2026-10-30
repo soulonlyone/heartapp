@@ -119,6 +119,9 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 
 ### Qt 特有的坑
 
+- 圆角下拉弹窗：透明属性和无边框标志必须在首次显示前设置；QSS 的圆角不会裁剪
+  原生窗口及子控件，需在 Show / Resize 时同步圆角 mask。菜单底色由 QListView 绘制，
+  viewport 禁用自动填底；不要只在 `showPopup()` 之后加透明属性（Windows 暗色模式会露黑角）。
 - **调色板必须固定成浅色**：D 版是刻意的暖白纸面设计，`HeartAppWindow.__init__` 会调用
   `editorial.ensure_light_palette()` 把 Qt 调色板钉死。系统处于**深色模式**时 Qt 默认
   文字色是白色，而 QSS 把背景写死成 PAPER —— 任何「没显式设色」的控件都会变成

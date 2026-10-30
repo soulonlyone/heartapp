@@ -7,7 +7,7 @@ import math
 import sys
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import QAbstractNativeEventFilter, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QAbstractNativeEventFilter, QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPalette,
     QPen,
+    QRegion,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -163,9 +164,30 @@ class CapsuleCombo(QComboBox):
         view = QListView()
         view.setMouseTracking(True)
         view.setItemDelegate(MenuItem(view))
-        view.setStyleSheet(f"QListView {{ background: {PAPER}; border: none; padding: 5px; outline: none; }}")
+        view.setStyleSheet(
+            f"QListView {{ background: {PAPER}; border: 1px solid {RULE}; "
+            "border-radius: 12px; padding: 5px; outline: none; }"
+        )
         self.setView(view)
+        # 必须在首次显示、创建原生窗口之前启用透明；显示后设置在 Windows 上不可靠。
+        container = view.window()
+        container.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        container.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        container.setObjectName("capsulePopup")
+        container.setStyleSheet("#capsulePopup { background: transparent; border: none; }")
+        view.setAutoFillBackground(False)
+        view.viewport().setAutoFillBackground(False)
+        container.installEventFilter(self)
         self._open = False
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.view().window() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            # QSS 圆角不会裁掉窗口及子控件，实际窗口也需要圆角轮廓，防止底层矩形露黑角。
+            outline = QPainterPath()
+            outline.addRoundedRect(QRectF(watched.rect()), 12, 12)
+            watched.setMask(QRegion(outline.toFillPolygon().toPolygon()))
+        return super().eventFilter(watched, event)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -189,9 +211,6 @@ class CapsuleCombo(QComboBox):
         self.view().setMinimumWidth(max(190, self.width()))
         self._open = True
         super().showPopup()
-        container = self.view().window()
-        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        container.setStyleSheet(f"QFrame {{ background: {PAPER}; border: 1px solid {RULE}; border-radius: 12px; }}")
         self.update()
 
     def hidePopup(self) -> None:
