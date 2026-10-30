@@ -29,16 +29,23 @@ from .source import (
 )
 
 PROFILES = {
+    "gaming": "PC 游戏演示（平稳读数与短暂波动）",
+    "desktop": "PC 工作演示（低幅度波动）",
     "rest": "静息（坐着不动，约 60-75）",
     "workout": "有氧运动（热身→稳定 135 左右→放松）",
     "interval": "间歇训练（高低强度交替）",
 }
 
-DEFAULT_PROFILE = "interval"
+DEFAULT_PROFILE = "gaming"
 
 
 def _target_bpm(profile: str, t: float, rng: random.Random) -> float:
     """给定已运行秒数，返回当前的目标心率。"""
+    if profile in ("gaming", "desktop"):
+        base = 72.0 + 3.0 * math.sin(2 * math.pi * t / 120)
+        if profile == "gaming":
+            base += 24.0 * max(0.0, math.sin(2 * math.pi * (t - 30) / 110)) ** 6
+        return base
     if profile == "rest":
         base = 66.0 + 4.0 * math.sin(2 * math.pi * t / 180.0)
         # 偶尔一次深呼吸，心率轻微下探

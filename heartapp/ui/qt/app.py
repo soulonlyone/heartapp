@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QSizePolicy,
@@ -44,6 +45,8 @@ from ...store import HeartRateStore
 from ...engine import Engine
 from . import theme as T
 from . import widgets as W
+from .pc_panel import PCSessionPanel, PCReading, HeartOverlay, MarkerHotkey
+from ...pc import session_baseline
 
 #: 实时趋势图显示最近多少秒
 LIVE_WINDOW_S = 300.0
@@ -54,7 +57,7 @@ CHART_MS = 500
 #: 背景重建防抖
 BACKDROP_DEBOUNCE_MS = 90
 
-TREE_HEADERS = ("开始时间", "时长", "设备", "来源", "样本", "平均", "最高")
+TREE_HEADERS = ("开始时间", "时长", "会话 / 设备", "来源", "样本", "平均", "最高")
 #: 左栏宽度有限，宽度总和必须小于左栏，否则会出现横向滚动条。
 #: 日期列给足 136px，否则会被截成「2026-10-17 ...」。
 TREE_WIDTHS = (136, 50, 90, 46, 46, 42, 42)
@@ -155,9 +158,11 @@ class HeartAppWindow(QWidget):
         self._devices: List[object] = []
         self._live: Deque[Tuple[float, int]] = deque(maxlen=4000)
         self._last_sample = None
+        self._last_reading_clock = None
+        self._pc_markers = []
+        self._pc_clock = 0.0
         self._chart_dirty = False
         self._last_chart_ms = 0.0
-        self._last_zone_ms = 0.0
 
         # 当前记录
         self._session_id: Optional[int] = None
@@ -166,8 +171,6 @@ class HeartAppWindow(QWidget):
         self._rec_n = 0
         self._rec_min: Optional[int] = None
         self._rec_max: Optional[int] = None
-        self._rec_zones: Dict[str, float] = {}
-        self._rec_last_point: Optional[Tuple[float, int]] = None
 
         # 历史
         self._sessions: List[object] = []
@@ -183,12 +186,16 @@ class HeartAppWindow(QWidget):
         self._backdrop_timer.setSingleShot(True)
         self._backdrop_timer.timeout.connect(self._rebuild_backdrop)
 
-        self.setWindowTitle(f"{APP_NAME} — 从智能手表读取并记录心率")
+        self.setWindowTitle(f"{APP_NAME} — PC 心率监控")
         self.resize(1160, 880)
         self.setMinimumSize(980, 700)
 
         self._build_ui()
         self._refresh_history()
+        self._overlay = HeartOverlay(self)
+        self._marker_hotkey = MarkerHotkey(lambda: self.engine.mark_event("快捷标记"))
+        self._hotkey_hint.setText("Ctrl+Alt+F8 全局标记" if self._marker_hotkey.registered
+                                 else "全局快捷键不可用，请使用标记按钮")
 
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(self._poll)
@@ -237,7 +244,7 @@ class HeartAppWindow(QWidget):
         title.setStyleSheet(f"color: {T.INK}; background: transparent;")
         head.addWidget(title)
 
-        subtitle = QLabel("从智能手表实时读取并记录")
+        subtitle = QLabel("观察游戏与工作时的心率变化")
         subtitle.setFont(T.font("caption"))
         subtitle.setStyleSheet(f"color: {T.INK_3}; background: transparent;")
         head.addWidget(subtitle)
@@ -351,7 +358,7 @@ class HeartAppWindow(QWidget):
         self._profile_combo.setFont(T.font("body"))
         bar.addWidget(self._profile_combo)
 
-        settings = W.M3Button("设置", variant="text", height=34)
+        settings = W.M3Button("高级", variant="text", height=34)
         settings.clicked.connect(self.on_settings)
         bar.addWidget(settings)
 
@@ -374,7 +381,7 @@ class HeartAppWindow(QWidget):
 
         gauge_card = W.Card(page, radius=T.RADIUS_CARD, padding=6)
         gauge_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.bpm_panel = W.BpmGauge()
+        self.bpm_panel = PCReading()
         gauge_card.layout().addWidget(self.bpm_panel)
         top.addWidget(gauge_card, 5)
 
@@ -384,7 +391,7 @@ class HeartAppWindow(QWidget):
         sc.setContentsMargins(0, 0, 0, 0)
         sc.setSpacing(12)
 
-        sc.addWidget(W.section_label("本次记录"))
+        sc.addWidget(W.section_label("本次 PC 会话"))
 
         self._stat_values: Dict[str, QLabel] = {}
         stats_row = QHBoxLayout()
@@ -412,7 +419,7 @@ class HeartAppWindow(QWidget):
         sc.addSpacing(2)
         sc.addWidget(W.Divider())
 
-        self.zone_bar = W.ZoneBar()
+        self.zone_bar = PCSessionPanel()
         self.zone_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sc.addWidget(self.zone_bar, 1)
 
@@ -430,6 +437,32 @@ class HeartAppWindow(QWidget):
         chart_card.layout().addWidget(self.live_chart)
         col.addWidget(chart_card, 4)
 
+        context = QHBoxLayout()
+        self._activity_combo = QComboBox()
+        self._activity_combo.addItems(["游戏", "工作", "其他"])
+        self._activity_combo.setStyleSheet(COMBO_QSS)
+        context.addWidget(self._activity_combo)
+        self._session_title = QLineEdit()
+        self._session_title.setPlaceholderText("会话名称，例如：晚间排位 / 编程")
+        self._session_title.setMaxLength(120)
+        context.addWidget(self._session_title, 1)
+        self._event_text = QLineEdit()
+        self._event_text.setPlaceholderText("事件，例如：开局 / 团战 / 结束")
+        self._event_text.setMaxLength(120)
+        input_style = f"QLineEdit {{ background: white; color: {T.INK}; border: 1px solid {T.OUTLINE}; border-radius: 8px; padding: 7px; }} QLineEdit:disabled {{ color: {T.INK_3}; }}"
+        self._event_text.setStyleSheet(input_style)
+        self._session_title.setStyleSheet(input_style)
+        self._event_text.returnPressed.connect(self.on_mark_event)
+        context.addWidget(self._event_text, 1)
+        mark = W.M3Button("标记事件", variant="secondary", height=34)
+        mark.clicked.connect(self.on_mark_event)
+        context.addWidget(mark)
+        col.addLayout(context)
+        self._hotkey_hint = QLabel("Ctrl+Alt+F8 全局标记")
+        self._hotkey_hint.setFont(T.font("micro"))
+        self._hotkey_hint.setStyleSheet(f"color: {T.INK_3};")
+        col.addWidget(self._hotkey_hint)
+
         # ---- 操作行 ----
         actions = QHBoxLayout()
         actions.setContentsMargins(2, 4, 2, 0)
@@ -445,6 +478,9 @@ class HeartAppWindow(QWidget):
         self._record_label.setStyleSheet(f"color: {T.INK_3}; background: transparent;")
         actions.addWidget(self._record_label)
         actions.addStretch(1)
+        overlay_btn = W.M3Button("心率小窗", variant="secondary", height=38)
+        overlay_btn.clicked.connect(self.on_overlay_toggle)
+        actions.addWidget(overlay_btn)
 
         export_btn = self._export_button(variant="text", height=38, current=True)
         actions.addWidget(export_btn)
@@ -527,7 +563,7 @@ class HeartAppWindow(QWidget):
 
         rc.addWidget(W.Divider())
 
-        self.history_zone_bar = W.ZoneBar()
+        self.history_zone_bar = PCSessionPanel()
         self.history_zone_bar.setMinimumHeight(104)
         rc.addWidget(self.history_zone_bar)
 
@@ -565,11 +601,8 @@ class HeartAppWindow(QWidget):
                 self._chart_dirty = False
                 self._draw_live_chart()
 
-            if self.engine.is_recording and now - self._last_zone_ms >= 2000:
-                self._last_zone_ms = now
-                self._zone_live_update()
-
             self._update_stat_labels()
+            self._update_pc_reading()
         except Exception as exc:  # noqa: BLE001
             self._status_label.setText(f"界面错误：{exc}")
 
@@ -591,13 +624,16 @@ class HeartAppWindow(QWidget):
                 self._connect_btn.set_text("连接")
             if state == "connected" and self._pending_autorecord:
                 self._pending_autorecord = False
-                self.engine.start_recording()
+                self.engine.start_pc_recording(self._session_title.text(), self._activity_combo.currentText())
 
         elif kind == "sample":
             sample = payload.get("sample")
             if sample is None:
                 return
             self._last_sample = sample
+            if sample.bpm > 0 and sample.contact is not False:
+                self._last_reading_clock = time.monotonic()
+                self.zone_bar.sample(sample)
             if sample.bpm and sample.bpm > 0:
                 self._live.append((time.monotonic(), int(sample.bpm)))
                 if self._session_id is not None:
@@ -605,12 +641,16 @@ class HeartAppWindow(QWidget):
                     self._rec_n += 1
                     self._rec_min = sample.bpm if self._rec_min is None else min(self._rec_min, sample.bpm)
                     self._rec_max = sample.bpm if self._rec_max is None else max(self._rec_max, sample.bpm)
-                    self._accumulate_zone(int(sample.bpm))
             self.bpm_panel.set_state(
                 bpm=sample.bpm if sample.bpm else None,
                 max_hr=self._max_hr,
                 contact=sample.contact,
             )
+            self._chart_dirty = True
+
+        elif kind == "marker":
+            self.zone_bar.marker(payload["t_offset"], payload["label"])
+            self._pc_markers.append((payload["t_offset"], payload["label"]))
             self._chart_dirty = True
 
         elif kind == "devices":
@@ -636,12 +676,18 @@ class HeartAppWindow(QWidget):
         elif kind == "session_started":
             self._session_id = int(payload.get("session_id"))
             self._session_started = payload.get("started_at") or datetime.now()
+            self.zone_bar.reset()
+            self._pc_clock = time.monotonic()
+            self._pc_markers = []
+            self._activity_combo.setEnabled(False)
+            self._session_title.setEnabled(False)
+            self._sim_chip.setEnabled(False)
+            self._profile_combo.setEnabled(False)
+            self._device_combo.setEnabled(False)
             self._rec_sum = 0
             self._rec_n = 0
             self._rec_min = None
             self._rec_max = None
-            self._rec_zones = {}
-            self._rec_last_point = None
             self._record_btn.setText("停止记录")
             self._record_btn.set_variant("danger")
             self._record_label.setText(
@@ -650,17 +696,20 @@ class HeartAppWindow(QWidget):
             self._update_state_pill()
 
         elif kind == "session_ended":
+            self.zone_bar.active = False
+            self._activity_combo.setEnabled(True)
+            self._session_title.setEnabled(True)
+            self._sim_chip.setEnabled(True)
+            self._profile_combo.setEnabled(True)
+            self._on_sim_toggled()
             stats = payload.get("stats")
             self._session_id = None
             self._session_started = None
-            self._rec_zones = {}
-            self._rec_last_point = None
             self._record_btn.setText("开始记录")
             self._record_btn.set_variant("filled")
             self._record_label.setText("未记录")
             self._update_state_pill()
             if stats is not None:
-                self.zone_bar.set_zones(stats.zone_seconds, max_hr=stats.max_hr)
                 self._history_summary.setText(self._format_stats(stats))
                 _Dialogs.info(self, APP_NAME, "本次记录已保存。\n\n" + self._format_stats(stats))
             self._refresh_history()
@@ -693,6 +742,34 @@ class HeartAppWindow(QWidget):
         simulated = self._sim_chip.isChecked()
         self._device_combo.setEnabled(not simulated)
         self._scan_btn.setEnabled(not simulated)
+
+    def on_mark_event(self) -> None:
+        if not self.engine.is_recording:
+            self._status_label.setText("请先开始 PC 会话，再标记事件。")
+            return
+        self.engine.mark_event(self._event_text.text().strip() or "标记")
+        self._event_text.clear()
+
+    def on_overlay_toggle(self) -> None:
+        self._overlay.setVisible(not self._overlay.isVisible())
+
+    def _update_pc_reading(self) -> None:
+        fresh = (self._last_reading_clock is not None
+                 and time.monotonic() - self._last_reading_clock <= 5
+                 and self.engine.state == "connected")
+        sample = self._last_sample
+        bpm = sample.bpm if fresh and sample is not None and sample.contact is not False else None
+        prefix = "模拟数据 · " if self.engine.source_kind == "sim" else ""
+        baseline = self.zone_bar.baseline
+        detail = "等待有效心率 / 读数已过期"
+        if bpm:
+            detail = (f"相对本次基线 {bpm - baseline:+.0f} bpm" if baseline is not None
+                      else "本次基线尚不可用")
+        self.zone_bar.change.setText(prefix + detail)
+        self.bpm_panel.set_state(bpm=bpm)
+        self._overlay.set_reading(bpm, prefix + detail)
+        if not fresh and self._live:
+            self._chart_dirty = True
 
     def on_scan(self) -> None:
         if self._scan_running:
@@ -740,7 +817,7 @@ class HeartAppWindow(QWidget):
             self._pending_autorecord = True
             self.engine.connect_simulator(self._selected_profile_key())
             return
-        self.engine.start_recording()
+        self.engine.start_pc_recording(self._session_title.text(), self._activity_combo.currentText())
 
     def on_export_current(self, *, directory: Optional[Path] = None) -> None:
         if self._session_id is None:
@@ -832,6 +909,7 @@ class HeartAppWindow(QWidget):
 
         try:
             target = self.store.export_csv(session_id, target_path)
+            self.store.export_events_csv(session_id, target.with_name(target.stem + "_events.csv"))
         except (PermissionError, OSError) as exc:
             self._offer_fallback(session_id, target_path, exc)
             return
@@ -878,7 +956,8 @@ class HeartAppWindow(QWidget):
         self._selected_session_id = None
         self._history_summary.setText("选择左侧的一次记录查看详情。")
         self.history_chart.clear()
-        self.history_zone_bar.set_zones({}, max_hr=self._max_hr)
+        self.history_zone_bar.events.clear()
+        self.history_chart.markers = []
         self._refresh_history()
 
     def on_open_data_dir(self) -> None:
@@ -896,35 +975,16 @@ class HeartAppWindow(QWidget):
     # 统计与图表
     # ==================================================================
 
-    def _accumulate_zone(self, bpm: int) -> None:
-        from ...metrics import MAX_GAP_S, zone_for_bpm
-
-        now = time.monotonic()
-        previous = self._rec_last_point
-        if previous is not None:
-            dt = now - previous[0]
-            if 0 < dt <= MAX_GAP_S:
-                zone = zone_for_bpm(previous[1], self._max_hr)
-                self._rec_zones[zone] = self._rec_zones.get(zone, 0.0) + dt
-        self._rec_last_point = (now, bpm)
-
-    def _zone_live_update(self) -> None:
-        if not self._rec_zones:
-            self.zone_bar.set_zones({}, max_hr=self._max_hr)
-            return
-        self.zone_bar.set_zones(
-            dict(self._rec_zones), max_hr=self._max_hr, title="心率区间时长（进行中）"
-        )
-
     def _draw_live_chart(self) -> None:
         now = time.monotonic()
         cutoff = now - LIVE_WINDOW_S
         points = [(t - now, bpm) for t, bpm in self._live if t >= cutoff]
-        self.live_chart.set_points(points, window=LIVE_WINDOW_S, axis="live", max_hr=self._max_hr)
+        self.live_chart.markers = [(self._pc_clock + t - now, label) for t, label in self._pc_markers]
+        self.live_chart.set_points(points, window=LIVE_WINDOW_S, axis="live", max_hr=None)
 
     def _update_stat_labels(self) -> None:
         if self._session_started is not None:
-            elapsed = (datetime.now() - self._session_started).total_seconds()
+            elapsed = max(0.0, time.monotonic() - self._pc_clock)
         else:
             elapsed = 0.0
 
@@ -970,10 +1030,11 @@ class HeartAppWindow(QWidget):
         for row, session in enumerate(sessions):
             avg, low, high, count = aggregates.get(session.id, (None, None, None, 0))
             duration = format_duration(session.duration_s) if session.ended_at else "进行中"
+            context = self.store.pc_context(session.id)
             values = (
                 f"{session.started_at:%Y-%m-%d %H:%M:%S}",
                 duration,
-                (session.device_name or "-")[:18],
+                (context["title"] if context else session.device_name or "-")[:40],
                 SOURCE_LABELS.get(session.source, session.source),
                 str(count),
                 f"{avg:.0f}" if avg else "--",
@@ -1006,11 +1067,23 @@ class HeartAppWindow(QWidget):
         thinned = samples[::step] if step > 1 else samples
         points = [(s.t_offset, s.bpm) for s in thinned if s.bpm > 0]
         self.history_chart.set_points(
-            points, axis="elapsed", max_hr=stats.max_hr,
+            points, axis="elapsed", max_hr=None,
             title=f"心率曲线（{len(samples)} 个采样点"
                   + (f"，图中抽取 {len(points)} 点" if step > 1 else "") + "）",
         )
-        self.history_zone_bar.set_zones(stats.zone_seconds, max_hr=stats.max_hr)
+        context = self.store.pc_context(session.id)
+        if context:
+            self._history_summary.setText(f"{context['activity']} · {context['title']}\n" + self._history_summary.text())
+        baseline = session_baseline(samples) if session.duration_s >= 30 else None
+        self.history_zone_bar.change.setText("事件与心率使用相同的相对时间轴")
+        self.history_zone_bar.reference.setText(
+            f"本次基线 {baseline:.0f} bpm" if baseline is not None else "本次基线不可用")
+        self.history_zone_bar.events.clear()
+        events = self.store.session_events(session.id)
+        for event in events:
+            self.history_zone_bar.marker(event["t_offset"], event["label"])
+        self.history_chart.markers = [(e["t_offset"], e["label"]) for e in events]
+        self.history_chart.update()
 
     @staticmethod
     def _format_stats(stats) -> str:
@@ -1024,12 +1097,8 @@ class HeartAppWindow(QWidget):
             f"时长 {stats.duration_text} · 采样 {stats.sample_count} 条"
             + (f"（无读数 {stats.dropped_sample_count} 条）" if stats.dropped_sample_count else ""),
             f"平均 {num(stats.avg_bpm, 1)} bpm · 最高 {num(stats.max_bpm)} · "
-            f"最低 {num(stats.min_bpm)} · 静息 {num(stats.resting_bpm, 1)}",
+            f"最低 {num(stats.min_bpm)}",
         ]
-        if stats.rmssd_ms is not None:
-            lines.append(f"HRV(RMSSD) {stats.rmssd_ms:.1f} ms（基于广播 RR 间期，仅供参考）")
-        else:
-            lines.append("HRV：本次未收到足够的 RR 间期，无法计算")
         return "\n".join(lines)
 
     # ==================================================================
@@ -1044,6 +1113,8 @@ class HeartAppWindow(QWidget):
                 event.ignore()
                 return
         self._closed = True
+        self._marker_hotkey.close()
+        self._overlay.close()
         self._poll_timer.stop()
         try:
             self.engine.shutdown()

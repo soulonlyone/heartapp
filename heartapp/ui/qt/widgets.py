@@ -548,6 +548,7 @@ class TrendChart(QWidget):
     def __init__(self, parent: Optional[QWidget] = None, *, title: str = "") -> None:
         super().__init__(parent)
         self.points: List[Tuple[float, float]] = []
+        self.markers: List[Tuple[float, str]] = []
         self.window: Optional[float] = None
         self.axis = "live"
         self.max_hr: Optional[int] = None
@@ -681,32 +682,26 @@ class TrendChart(QWidget):
 
         pts = [QPointF(px(x), py(max(y_lo, min(y_hi, y)))) for x, y in self.points]
 
-        if len(pts) >= 2:
-            # 渐变填充：从强调色 14% 淡到全透明
-            area = QPainterPath()
-            area.moveTo(pts[0].x(), pad_t + plot_h)
-            for point in pts:
-                area.lineTo(point)
-            area.lineTo(pts[-1].x(), pad_t + plot_h)
-            area.closeSubpath()
-            gradient = QLinearGradient(0, pad_t, 0, pad_t + plot_h)
-            top_color = QColor(ACCENT)
-            top_color.setAlphaF(0.16)
-            bottom_color = QColor(ACCENT)
-            bottom_color.setAlphaF(0.0)
-            gradient.setColorAt(0.0, top_color)
-            gradient.setColorAt(1.0, bottom_color)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(gradient))
-            painter.drawPath(area)
-
-            line = QPainterPath(pts[0])
-            for point in pts[1:]:
+        # 断流超过五秒时断开曲线，避免暗示缺失期间仍有读数。
+        line = QPainterPath()
+        for i, point in enumerate(pts):
+            if i == 0 or self.points[i][0] - self.points[i - 1][0] > 5:
+                line.moveTo(point)
+            else:
                 line.lineTo(point)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(ACCENT), 1.8, Qt.PenStyle.SolidLine,
-                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(line)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(ACCENT), 1.8))
+        painter.drawPath(line)
+
+        visible_markers = [(t, label) for t, label in self.markers if x_lo <= t <= x_hi]
+        for index, (t, label) in enumerate(visible_markers[-12:]):
+            xx = px(t)
+            painter.setPen(QPen(color(INK_3), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(QPointF(xx, pad_t), QPointF(xx, pad_t + plot_h))
+            painter.setFont(font("micro"))
+            painter.drawText(QRectF(min(xx + 4, pad_l + plot_w - 90),
+                                   pad_t + 4 + (index % 2) * 16, 88, 16),
+                             Qt.AlignmentFlag.AlignLeft, label[:12])
 
         if len(self.points) >= 5:
             avg = sum(p[1] for p in self.points) / len(self.points)

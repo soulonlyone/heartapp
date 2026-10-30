@@ -85,6 +85,7 @@ class Engine:
         # 以下状态只在引擎循环线程中被读写
         self._session_id: Optional[int] = None
         self._session_start: Optional[datetime] = None
+        self._session_clock = 0.0
         self._pending: List[Tuple[datetime, float, int, Optional[bool], Optional[float]]] = []
         self._last_flush = 0.0
         self._device_lock = threading.RLock()
@@ -302,6 +303,8 @@ class Engine:
         device_name: Optional[str],
         device_address: Optional[str],
     ) -> None:
+        if self._session_id is not None and self.store.pc_context(self._session_id):
+            raise ValueError("请先结束当前 PC 会话，再更换数据源，避免混合模拟和真实数据。")
         await self._async_stop_source()
         self._stop_event = asyncio.Event()
         self._source = source
@@ -439,6 +442,7 @@ class Engine:
         )
         self._session_id = session_id
         self._session_start = started_at
+        self._session_clock = time.monotonic()
         self._pending = []
         self._last_flush = time.monotonic()
         self._emit(
@@ -476,6 +480,23 @@ class Engine:
         """结束记录。``wait=True`` 时返回统计，否则通过 ``session_ended`` 事件给出。"""
         return self._dispatch(self._stop_recording_impl, wait=wait, result_timeout=timeout)
 
+    def start_pc_recording(self, title: str, activity: str) -> None:
+        def impl() -> None:
+            if self.is_recording:
+                return
+            sid = self._start_recording_impl(None)
+            self.store.set_pc_context(sid, title.strip() or "未命名 PC 会话", activity)
+        self._dispatch(impl)
+
+    def mark_event(self, label: str = "标记") -> None:
+        def impl() -> None:
+            if self._session_id is None:
+                return
+            offset = max(0.0, time.monotonic() - self._session_clock)
+            self.store.add_event(self._session_id, offset, label)
+            self._emit("marker", t_offset=offset, label=label.strip()[:120])
+        self._dispatch(impl)
+
     def _flush(self) -> None:
         if not self._pending or self._session_id is None:
             return
@@ -489,13 +510,15 @@ class Engine:
         self._last_flush = time.monotonic()
 
     def _on_sample(self, sample: HeartRateSample) -> None:
+        if self._session_id is not None:
+            sample.t_offset = max(0.0, time.monotonic() - self._session_clock)
         self._emit("sample", sample=sample)
         if self._session_id is None or self._session_start is None:
             return
         if sample.bpm <= 0:
             return
         rr_first = sample.rr_intervals_ms[0] if sample.rr_intervals_ms else None
-        t_offset = (sample.ts - self._session_start).total_seconds()
+        t_offset = sample.t_offset
         self._pending.append((sample.ts, t_offset, sample.bpm, sample.contact, rr_first))
         now = time.monotonic()
         if len(self._pending) >= FLUSH_EVERY or (now - self._last_flush) >= FLUSH_MAX_SECONDS:
