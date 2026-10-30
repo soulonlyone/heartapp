@@ -116,10 +116,22 @@ class TestMarkerHotkey(unittest.TestCase):
         self.assertEqual(pc_panel.MARKER_HOTKEY_VK, 0x77)       # VK_F8
 
     def test_close_without_registration_is_safe(self):
-        """没有 QApplication 时不应注册，close() 也要能重复调用不报错。"""
+        """没有 QApplication 时不应注册，close() 也要能重复调用不报错。
+
+        测试进程里可能已经有 QApplication（别的界面测试建的），那样热键会真的注册。
+        这里显式屏蔽掉 app，才能稳定地测「无 GUI 环境」的降级路径。
+        """
+        from unittest.mock import patch
+
         from heartapp.ui.qt.pc_panel import MarkerHotkey
 
-        hotkey = MarkerHotkey(lambda: None)
+        class _NoApp:
+            @staticmethod
+            def instance():
+                return None
+
+        with patch("heartapp.ui.qt.pc_panel.QApplication", _NoApp):
+            hotkey = MarkerHotkey(lambda: None)
         self.assertFalse(hotkey.registered)
         hotkey.close()
         hotkey.close()
