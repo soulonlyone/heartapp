@@ -451,6 +451,7 @@ class Engine:
             started_at=started_at,
             device_name=self._device_name,
             source=self._source_kind,
+            clock=self._session_clock,
         )
         return session_id
 
@@ -512,7 +513,7 @@ class Engine:
     def _on_sample(self, sample: HeartRateSample) -> None:
         if self._session_id is not None:
             sample.t_offset = max(0.0, time.monotonic() - self._session_clock)
-        self._emit("sample", sample=sample)
+        self._emit("sample", sample=sample, received_at=time.monotonic())
         if self._session_id is None or self._session_start is None:
             return
         if sample.bpm <= 0:
