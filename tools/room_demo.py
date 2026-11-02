@@ -41,7 +41,7 @@ def main() -> int:
             window.setWindowTitle(f"HeartApp · {name} · 模拟演示")
             window._room_panel.address.setText(f"ws://127.0.0.1:{port}")
             window._room_panel.name.setText(name)
-            window._tabbar.select(3)
+            window._tabbar.select(0)
             window._sim_chip.setChecked(True)
             window._on_sim_toggled()
             engine.connect_simulator("gaming")

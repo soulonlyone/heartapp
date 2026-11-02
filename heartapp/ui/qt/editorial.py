@@ -249,7 +249,7 @@ class Navigation(QWidget):
         layout.setSpacing(14)
         self.buttons = []
         self.index = 0
-        for index, text in enumerate(("实时", "回看", "小窗", "联机")):
+        for index, text in enumerate(("实时", "回看", "小窗")):
             button = QPushButton(text)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setFixedSize(46, 36)

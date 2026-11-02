@@ -88,16 +88,20 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
             window = HeartAppWindow(store, engine)
             windows.append(window)
             window.show()
-            window._tabbar.select(3)
+            window._tabbar.select(0)
             panel = window._room_panel
             panel.address.setText(f"ws://127.0.0.1:{relay.port}")
             panel.name.setText(("玩家一", "朋友")[index])
         first, second = windows
+        first._room_manage_btn.click()
+        assert first._room_dialog.isVisible()
         first._room_panel.create.click()
         wait(lambda: bool(first._room_code))
         second._room_panel.code.setText(first._room_code)
         second._room_panel.join.click()
         wait(lambda: len(first._room_members) == len(second._room_members) == 2)
+        wait(lambda: first._live_chart_stack.currentIndex() == 1)
+        assert not first._room_dialog.isVisible()
         assert not first._room_panel.share.isChecked() and not second._room_panel.share.isChecked()
         print("[1] 创建 / 加入私人房间，默认不共享 PASS")
         for engine, window in zip(engines, windows):
@@ -111,6 +115,17 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
         assert own["bpm"] is None
         second._room_panel.share.setChecked(True)
         wait(lambda: all(m.get("bpm") and m.get("simulated") for m in first._room_members))
+        wait(lambda: len(first._room_chart.series) == 2 and all(s["points"] for s in first._room_chart.series.values()))
+        key = next(k for k in first._room_legends if k != "self")
+        first._room_legends[key].click()
+        assert key not in first._room_chart.series
+        first._room_legends[key].click()
+        assert key in first._room_chart.series
+        assert first._live_share.isChecked()
+        first._room_chart.view = (-30, 0)
+        first._live_range.setCurrentIndex(1)
+        assert first._room_chart.view is None and first._room_chart.full_range() == (-1800, 0)
+        first._live_range.setCurrentIndex(0)
         print("[2] 两端读数与模拟标识转发 PASS")
         old_id = first._room_self_id
         old_code = first._room_code
@@ -136,6 +151,8 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
         first._room_panel.share.setChecked(False)
         wait(lambda: next(m for m in second._room_members if m["id"] == first._room_self_id)["bpm"] is None)
         print("[4] 关闭共享立即停止转发心率 PASS")
+        assert not first._live_share.isChecked()
+        assert first._room_display_members()[0]["bpm"] is not None
         counts = [w._rec_n for w in windows]
         relay.stop.set()
         pump(2.5)
@@ -146,6 +163,7 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
         ids = [w._session_id for w in windows]
         for window in windows:
             window.on_room_leave()
+            assert not window._room_history.points and window._live_chart_stack.currentIndex() == 0
             window._titlebar.close_button.click()
             wait(lambda: window._closed)
         for engine, store, sid in zip(engines, stores, ids):

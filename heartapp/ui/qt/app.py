@@ -270,6 +270,8 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             if sample.bpm > 0 and sample.contact is not False:
                 self._last_reading_clock = received
                 self._live.append((received, int(sample.bpm)))
+                if self._room_code:
+                    self._room_history.append("self", received, int(sample.bpm))
                 if self._session_id is not None:
                     self._session_points.append((sample.t_offset, sample.bpm))
                     self._rec_sum += sample.bpm
@@ -380,6 +382,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
 
     def _update_pc_reading(self) -> None:
         self._publish_room_reading()
+        self._sync_room_home()
         fresh = (self._last_reading_clock is not None
                  and time.monotonic() - self._last_reading_clock <= 5
                  and self.engine.state == "connected")
@@ -597,6 +600,11 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
 
     def _draw_live_chart(self) -> None:
         now = time.monotonic()
+        if self._room_code:
+            self._live_chart_stack.setCurrentIndex(1)
+            self._refresh_room_graph(now)
+            return
+        self._live_chart_stack.setCurrentIndex(0)
         window = self._live_range.currentData()
         if window == 0 and self._session_points:
             elapsed = now - self._pc_clock if self.engine.is_recording else self._session_points[-1][0]

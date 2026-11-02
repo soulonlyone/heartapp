@@ -30,6 +30,7 @@ class Member:
     simulated: bool = False
     sharing: bool = False
     updated: float = 0.0
+    sequence: int = 0
 
 
 class Relay:
@@ -48,7 +49,8 @@ class Relay:
             fresh = now - member.updated <= 5
             members.append(dict(id=member.id, name=member.name,
                                 bpm=member.bpm if fresh and member.sharing else None,
-                                sharing=member.sharing, simulated=member.simulated))
+                                sharing=member.sharing, simulated=member.simulated,
+                                sample_seq=member.sequence, age_ms=round((now - member.updated) * 1000) if fresh else None))
         return dict(type="snapshot", room=code, members=members)
 
     async def send(self, socket: ServerConnection, payload: dict) -> None:
@@ -141,6 +143,7 @@ class Relay:
                 member.simulated = packet["simulated"]
                 member.bpm = bpm if member.sharing else None
                 member.updated = now
+                member.sequence += 1
         except (ValueError, TypeError, AttributeError, asyncio.TimeoutError):
             await self.reject(socket, "消息格式无效或握手超时")
         except ConnectionClosed:
