@@ -1,4 +1,5 @@
 @echo off
+rem Keep CRLF line endings for Windows cmd.exe.
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
