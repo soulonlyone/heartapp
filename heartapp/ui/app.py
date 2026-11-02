@@ -929,11 +929,8 @@ class HeartAppFrame(ttk.Frame):
         """收尾：停数据源、结束记录、关数据库。"""
         if self._closed:
             return
+        self.engine.shutdown()
         self._closed = True
-        try:
-            self.engine.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -1089,7 +1086,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if engine.is_recording:
             if not messagebox.askyesno(APP_NAME, "正在记录中，确定退出吗？\n本次记录会被保存。"):
                 return
-        frame.close()
+        try:
+            frame.close()
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"记录保存失败，已取消退出。请排除问题后重试。\n\n{exc}")
+            return
         store.close()
         root.destroy()
 

@@ -185,6 +185,8 @@ class HeartAppWindow(EditorialLayout, QWidget):
         self._scan_running = False
         self._max_hr = self.engine.max_hr()
         self._closed = False
+        self._closing = False
+        self._close_ready = False
 
         self.setWindowTitle(f"{APP_NAME} — PC 心率监控")
         self.resize(1120, 780)
@@ -286,8 +288,19 @@ class HeartAppWindow(EditorialLayout, QWidget):
         elif kind == "error":
             message = payload.get("message", "")
             self._status_label.setText(message)
-            if message:
+            if message and not self._closing:
                 _Dialogs.warn(self, APP_NAME, message)
+
+        elif kind == "shutdown_failed":
+            self._closing = False
+            self.setEnabled(True)
+            message = "记录尚未保存完成，已取消退出。请检查磁盘空间或文件权限后重试。\n\n" + payload.get("message", "")
+            self._status_label.setText("保存失败，已取消退出；记录仍保留在内存中，请重试。")
+            _Dialogs.error(self, APP_NAME, message)
+
+        elif kind == "shutdown_ready":
+            self._close_ready = True
+            self.close()
 
         elif kind == "session_started":
             self._session_id = int(payload.get("session_id"))
@@ -660,20 +673,26 @@ class HeartAppWindow(EditorialLayout, QWidget):
     # ==================================================================
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        if self.engine.is_recording:
-            if not _Dialogs.ask(
-                self, APP_NAME, "正在记录中，确定退出吗？\n本次记录会被保存。"
-            ):
-                event.ignore()
+        if not self._close_ready and (self.engine.is_started or self.engine.is_recording):
+            event.ignore()
+            if self._closing:
                 return
+            if self.engine.is_recording and not _Dialogs.ask(
+                self, APP_NAME, "正在记录中，保存本次记录并退出吗？\n下次打开可在「回看」中查看。"
+            ):
+                return
+            self._closing = True
+            self.setEnabled(False)
+            self._status_label.setText("正在保存记录并退出…")
+            try:
+                self.engine.request_shutdown()
+            except Exception as exc:  # noqa: BLE001
+                self._handle_event("shutdown_failed", {"message": str(exc)})
+            return
         self._closed = True
         self._overlay_hotkey.close()
         self._overlay.close()
         self._poll_timer.stop()
-        try:
-            self.engine.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
         super().closeEvent(event)
 
 
@@ -818,10 +837,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         code = app.exec()
     finally:
-        try:
-            engine.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
+        engine.shutdown()
         store.close()
     return int(code)
 

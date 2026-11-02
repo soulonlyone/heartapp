@@ -217,15 +217,14 @@ try:
         problems.append("无权限时没有自动兜底到数据目录")
 
 finally:
-    try:
-        engine.shutdown()
-    except Exception:
-        pass
-    try:
-        store.close()
-    except Exception:
-        pass
     window.close()
+    deadline = time.monotonic() + 5
+    while not window._closed and time.monotonic() < deadline:
+        pump(.05)
+    if not window._closed:
+        problems.append("保存并退出未完成")
+    engine.shutdown()
+    store.close()
     if overlay_visible():
         problems.append("退出主窗口后小窗未关闭")
 

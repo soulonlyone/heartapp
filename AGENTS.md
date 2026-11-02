@@ -216,6 +216,10 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
         engine._on_sample(sample)      # 断言：不抛、缓存保留
 ```
 
+退出约定：`Engine.shutdown()` 保存失败必须抛出并保留线程和缓存；Qt 使用
+`request_shutdown()` 异步等待 `shutdown_ready` 后才关闭，`shutdown_failed` 则恢复窗口。
+不要在 GUI 关闭回调里吞异常继续关库。独立定时保存不依赖新样本到达；数据提交使用 FULL 同步。
+
 ### 改错误处理时的自查清单
 
 - [ ] 这个异常会冒到哪一层？那一层挂掉后，界面和内部状态还一致吗？
