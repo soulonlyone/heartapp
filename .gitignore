@@ -59,6 +59,7 @@ heartapp-selfsigned.cer
 # ---------------------------------------------------------------
 .vscode/
 .idea/
+server/.env
 *.swp
 Thumbs.db
 desktop.ini

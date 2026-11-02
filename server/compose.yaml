@@ -1,0 +1,21 @@
+services:
+  heartapp-relay:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    ports:
+      - "${HEARTAPP_BIND_IP:-127.0.0.1}:${HEARTAPP_PORT:-8765}:8765"
+    environment:
+      HEARTAPP_RELAY_PASSWORD: "${HEARTAPP_RELAY_PASSWORD:-}"
+    command: ["python", "-m", "heartapp.relay", "--host", "0.0.0.0", "--port", "8765", "--max-clients", "${HEARTAPP_MAX_CLIENTS:-20}"]
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.5
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

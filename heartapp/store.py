@@ -119,7 +119,8 @@ class HeartRateStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL")
-        self._conn.execute("PRAGMA synchronous = NORMAL")
+        # 每批提交同步 WAL 到磁盘，减少系统异常断电时已提交记录的损失。
+        self._conn.execute("PRAGMA synchronous = FULL")
         with self._lock:
             self._conn.executescript(_SCHEMA)
             self._conn.execute(

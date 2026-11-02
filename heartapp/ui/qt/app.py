@@ -47,6 +47,8 @@ from . import theme as T
 from . import widgets as W
 from .editorial import GlobalHotkey, Overlay, PAPER, ensure_light_palette
 from .editorial_layout import EditorialLayout
+from .chrome import FramelessWindow
+from .room_panel import RoomActions, RoomOverlay
 
 #: 实时趋势图显示最近多少秒
 LIVE_WINDOW_S = 300.0
@@ -146,7 +148,7 @@ class _Dialogs:
         return QMessageBox.question(parent, title, text) == QMessageBox.StandardButton.Yes
 
 
-class HeartAppWindow(EditorialLayout, QWidget):
+class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
     """主窗口。"""
 
     def __init__(self, store: HeartRateStore, engine: Engine, *, db_path: Optional[Path] = None) -> None:
@@ -185,6 +187,9 @@ class HeartAppWindow(EditorialLayout, QWidget):
         self._scan_running = False
         self._max_hr = self.engine.max_hr()
         self._closed = False
+        self._closing = False
+        self._close_ready = False
+        self._init_room()
 
         self.setWindowTitle(f"{APP_NAME} — PC 心率监控")
         self.resize(1120, 780)
@@ -192,9 +197,12 @@ class HeartAppWindow(EditorialLayout, QWidget):
 
         self._build_ui()
         self._refresh_history()
-        self._overlay = Overlay(self, self.store)
+        self._overlay = Overlay(self.store)
+        self._room_overlay = RoomOverlay(self.store)
         self._overlay.set_passthrough(self._passthrough.isChecked())
-        self._overlay_hotkey = GlobalHotkey(self.on_overlay_toggle)
+        self._room_overlay.set_passthrough(self._passthrough.isChecked())
+        self._room_overlay.setWindowOpacity(self.store.get_int_setting("overlay_opacity", 92) / 100)
+        self._overlay_hotkey = GlobalHotkey(self._toggle_active_overlay)
         if not self._overlay_hotkey.registered:
             self._hotkey_hint.setText("快捷键不可用或被占用，请使用此页按钮显示 / 隐藏小窗")
 
@@ -214,6 +222,7 @@ class HeartAppWindow(EditorialLayout, QWidget):
         if self._closed:
             return
         try:
+            self._poll_room()
             for kind, payload in self.engine.poll_events():
                 try:
                     self._handle_event(kind, payload)
@@ -261,6 +270,8 @@ class HeartAppWindow(EditorialLayout, QWidget):
             if sample.bpm > 0 and sample.contact is not False:
                 self._last_reading_clock = received
                 self._live.append((received, int(sample.bpm)))
+                if self._room_code:
+                    self._room_history.append("self", received, int(sample.bpm))
                 if self._session_id is not None:
                     self._session_points.append((sample.t_offset, sample.bpm))
                     self._rec_sum += sample.bpm
@@ -286,8 +297,19 @@ class HeartAppWindow(EditorialLayout, QWidget):
         elif kind == "error":
             message = payload.get("message", "")
             self._status_label.setText(message)
-            if message:
+            if message and not self._closing:
                 _Dialogs.warn(self, APP_NAME, message)
+
+        elif kind == "shutdown_failed":
+            self._closing = False
+            self.setEnabled(True)
+            message = "记录尚未保存完成，已取消退出。请检查磁盘空间或文件权限后重试。\n\n" + payload.get("message", "")
+            self._status_label.setText("保存失败，已取消退出；记录仍保留在内存中，请重试。")
+            _Dialogs.error(self, APP_NAME, message)
+
+        elif kind == "shutdown_ready":
+            self._close_ready = True
+            self.close()
 
         elif kind == "session_started":
             self._session_id = int(payload.get("session_id"))
@@ -350,13 +372,17 @@ class HeartAppWindow(EditorialLayout, QWidget):
 
     def _set_overlay_opacity(self, value: int) -> None:
         self._overlay.setWindowOpacity(value / 100)
+        self._room_overlay.setWindowOpacity(value / 100)
         self.store.set_setting("overlay_opacity", str(value))
 
     def _set_overlay_passthrough(self, enabled: bool) -> None:
         self._overlay.set_passthrough(enabled)
+        self._room_overlay.set_passthrough(enabled)
         self.store.set_setting("overlay_passthrough", "1" if enabled else "0")
 
     def _update_pc_reading(self) -> None:
+        self._publish_room_reading()
+        self._sync_room_home()
         fresh = (self._last_reading_clock is not None
                  and time.monotonic() - self._last_reading_clock <= 5
                  and self.engine.state == "connected")
@@ -574,6 +600,11 @@ class HeartAppWindow(EditorialLayout, QWidget):
 
     def _draw_live_chart(self) -> None:
         now = time.monotonic()
+        if self._room_code:
+            self._live_chart_stack.setCurrentIndex(1)
+            self._refresh_room_graph(now)
+            return
+        self._live_chart_stack.setCurrentIndex(0)
         window = self._live_range.currentData()
         if window == 0 and self._session_points:
             elapsed = now - self._pc_clock if self.engine.is_recording else self._session_points[-1][0]
@@ -660,20 +691,28 @@ class HeartAppWindow(EditorialLayout, QWidget):
     # ==================================================================
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        if self.engine.is_recording:
-            if not _Dialogs.ask(
-                self, APP_NAME, "正在记录中，确定退出吗？\n本次记录会被保存。"
-            ):
-                event.ignore()
+        if not self._close_ready and (self.engine.is_started or self.engine.is_recording):
+            event.ignore()
+            if self._closing:
                 return
+            if self.engine.is_recording and not _Dialogs.ask(
+                self, APP_NAME, "正在记录中，保存本次记录并退出吗？\n下次打开可在「回看」中查看。"
+            ):
+                return
+            self._closing = True
+            self.setEnabled(False)
+            self._status_label.setText("正在保存记录并退出…")
+            try:
+                self.engine.request_shutdown()
+            except Exception as exc:  # noqa: BLE001
+                self._handle_event("shutdown_failed", {"message": str(exc)})
+            return
         self._closed = True
+        self._room_client.leave()
+        self._room_overlay.close()
         self._overlay_hotkey.close()
         self._overlay.close()
         self._poll_timer.stop()
-        try:
-            self.engine.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
         super().closeEvent(event)
 
 
@@ -818,10 +857,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         code = app.exec()
     finally:
-        try:
-            engine.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
+        engine.shutdown()
         store.close()
     return int(code)
 

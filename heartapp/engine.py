@@ -121,6 +121,7 @@ class Engine:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
+        loop.create_task(self._periodic_flush())
         self._loop_ready.set()
         try:
             loop.run_forever()
@@ -144,12 +145,9 @@ class Engine:
         if not thread.is_alive():
             self._thread = self._loop = None
             return
-        try:
-            if self.is_recording:
-                self.stop_recording(wait=True, timeout=timeout)
-            self.stop_source(wait=True, timeout=timeout)
-        except Exception:  # noqa: BLE001
-            pass
+        # 保存失败必须保留引擎及缓存，让调用方提示并重试，不能继续销毁线程。
+        if loop.is_running():
+            self.submit(self._prepare_shutdown()).result(timeout=timeout)
         try:
             loop.call_soon_threadsafe(loop.stop)
         except RuntimeError:
@@ -157,6 +155,34 @@ class Engine:
         thread.join(timeout=timeout)
         self._thread = None
         self._loop = None
+
+    async def _prepare_shutdown(self) -> None:
+        self._stop_recording_impl()
+        await self._async_stop_source()
+
+    def request_shutdown(self) -> None:
+        """GUI 异步保存并退出，以 shutdown_ready / shutdown_failed 通知结果。"""
+        async def impl() -> None:
+            try:
+                await self._prepare_shutdown()
+            except Exception as exc:  # noqa: BLE001
+                self._emit("shutdown_failed", message=str(exc))
+                return
+            self._emit("shutdown_ready")
+            asyncio.get_running_loop().call_soon(asyncio.get_running_loop().stop)
+
+        self._dispatch(impl)
+
+    @property
+    def is_started(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    async def _periodic_flush(self) -> None:
+        """即使断流也会写入已有缓存；失败时沿用退避机制，绝不终止采集。"""
+        while True:
+            await asyncio.sleep(min(1.0, FLUSH_MAX_SECONDS))
+            if self._pending and time.monotonic() - self._last_flush >= FLUSH_MAX_SECONDS:
+                self._flush()
 
     # ------------------------------------------------------------------
     # 线程调度

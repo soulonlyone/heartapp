@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
@@ -122,7 +123,11 @@ class TestSimulatorSource(EngineTestCase):
 
 class TestRecording(EngineTestCase):
     def test_full_record_cycle(self):
-        self.engine.connect_simulator("workout")
+        # 正常生命周期使用确定性输入；随机丢帧会令首批不足 5 条，第二批晚于测试截止。
+        # 丢帧及断流保存由独立回归测试覆盖。
+        source = SimulatedHeartRateSource("workout", seed=0, dropout_rate=0)
+        with patch("heartapp.simulator.SimulatedHeartRateSource", return_value=source):
+            self.engine.connect_simulator("workout")
         self.assertTrue(self.engine.wait_for_state(("connected",), timeout=5.0))
         session_id = self.engine.start_recording(note="单元测试", wait=True)
         self.assertIsNotNone(session_id)

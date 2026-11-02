@@ -58,6 +58,15 @@ heartapp/
 **分层纪律**：业务逻辑（hr/metrics/store/engine）**不得** import 任何 UI 模块。
 两个 UI 共享同一套逻辑层，改逻辑时两边都要能跑。
 
+联机初版：`room_protocol.py` 为纯协议，`relay.py` 为独立 asyncio 入口，`lobby.py` 管理登录与房间，`room_client.py`
+为独立网络线程；Qt 的 `room_panel.py` 提供主页联机弹窗与多人小窗，`comparison.py` 提供共同坐标轴。
+`lobby_panel.py` 将服务器登录与房间列表分区；协议 v2 中退出房间不能断开服务器登录。
+会话令牌仅存内存，断线后保留 30 秒重连席位与稳定身份；密码不落盘，重启软件重新登录。
+`room_history.py` 仅缓存房间内最多 30 分钟曲线，退出清空；不把队友数据写入数据库。
+服务端无需 Qt / BLE / 数据库。联机不依赖公共服务器；共享默认关闭，密码不落盘，日志不含房间码或心率。
+协议变更需要版本检查；队友心率过期必须清空。联机改动还需跑 `tools/room_smoke_test.py`，
+覆盖真实双客户端、共享开关、掉线重连、服务故障及本地保存独立性。
+
 ## 4. 并发模型（改代码前必须理解）
 
 ```
@@ -74,7 +83,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 127 个）
+# 跑全部单元测试（当前 157 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）
@@ -112,6 +121,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 - 暖白画布 `#FBF9F4`、墨色衬线数字、朱红 `#F13D2B` 数据曲线，细线分隔。
 - 顶部文字导航：实时 / 回看 / 小窗；单一连续画布，不恢复卡片仪表盘布局。
 - 操作按钮统一为 36px 高的胶囊形，非编辑下拉使用 CapsuleCombo，保持箭头与弹出菜单风格一致。
+- 主窗口无系统边框，`chrome.py` 提供内置窗口按钮、顶部拖动/双击、系统边缘缩放。
+  关闭按钮必须调用主窗口 `close()` 走保存保护；不要直接退出 QApplication。
 - Qt 新界面绘制在 `editorial.py`，页面构建在 `editorial_layout.py`，事件与业务在 `app.py`。
 - 游戏小窗必须保留，手动事件标记与运动区间不出现在默认流程中。
 - 原 `theme.py`、旧控件与 Tk 界面保留兼容；D 版的配色和数字字体集中在 `editorial.py`。
@@ -119,6 +130,11 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 
 ### Qt 特有的坑
 
+- 游戏小窗必须是无父窗口的独立顶层工具窗；Windows 会在主窗口最小化时隐藏它拥有的
+  工具窗。主窗口保存 `_overlay` 引用并在退出时显式关闭，禁止重新添加父窗口。
+- 圆角下拉弹窗：透明属性和无边框标志必须在首次显示前设置；QSS 的圆角不会裁剪
+  原生窗口及子控件，需在 Show / Resize 时同步圆角 mask。菜单底色由 QListView 绘制，
+  viewport 禁用自动填底；不要只在 `showPopup()` 之后加透明属性（Windows 暗色模式会露黑角）。
 - **调色板必须固定成浅色**：D 版是刻意的暖白纸面设计，`HeartAppWindow.__init__` 会调用
   `editorial.ensure_light_palette()` 把 Qt 调色板钉死。系统处于**深色模式**时 Qt 默认
   文字色是白色，而 QSS 把背景写死成 PAPER —— 任何「没显式设色」的控件都会变成
@@ -145,6 +161,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 - 打包后要签名（`tools/sign_exe.ps1`，`build_exe.py` 会自动调）
 - **`.ps1` 脚本必须存成 UTF-8 with BOM**：Windows PowerShell 5.1 读无 BOM 文件会按
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意
+- **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
+  截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
 - PyInstaller `--exclude-module`：GUI 版排除 `tkinter`，CLI 版排除 `tkinter`
   + `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
 
@@ -211,6 +229,10 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
         engine._on_sample(sample)      # 断言：不抛、缓存保留
 ```
 
+退出约定：`Engine.shutdown()` 保存失败必须抛出并保留线程和缓存；Qt 使用
+`request_shutdown()` 异步等待 `shutdown_ready` 后才关闭，`shutdown_failed` 则恢复窗口。
+不要在 GUI 关闭回调里吞异常继续关库。独立定时保存不依赖新样本到达；数据提交使用 FULL 同步。
+
 ### 改错误处理时的自查清单
 
 - [ ] 这个异常会冒到哪一层？那一层挂掉后，界面和内部状态还一致吗？
@@ -223,10 +245,13 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 
 - [ ] 深色主题（令牌结构已支持，只需加一套色值 + 切换开关）
 - [ ] 多设备同时记录（engine 目前单源）
-- [ ] 趋势图支持缩放/拖动
+- [x] 趋势图支持缩放/拖动
 - [ ] 「本次记录」信息层级可再降密度（均值大字 + 小字详情）
 - [ ] 打包体积优化（PySide6 裁掉不用的 Qt 模块，可省 10MB+）
 - [ ] 真机长期稳定性验证（目前只在 OPPO Watch X2 上探针验证过服务存在）
+
+合并 main 前另读 [docs/merge-handoff.md](docs/merge-handoff.md)，其中列出当前协议 v2、
+验证结果、数据边界和发布前未完成项。仅补文档可沿用最近一次代码验证；合并后需重新验证。
 
 ## 12. 不要做的事
 
@@ -235,5 +260,6 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 - **不要在采集循环里抛出未捕获的异常**（会杀死循环，留下僵尸状态）
 - **不要只测成功路径就宣称改好了**（失败路径才是 bug 藏身处）
 - 不要把心跳数据/用户路径写进示例或测试外的文件
+- 演示、测试及截图只使用「玩家一 / 玩家二」等通用身份；不得从本机账户名、路径或对话推断真实姓名或昵称。
 - 不要删掉 Tk 兜底界面（有些环境装不上 PySide6）
 - 不要在没有跑通两个冒烟测试的情况下声称"已完成"
