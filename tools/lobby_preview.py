@@ -44,7 +44,7 @@ try:
         except OSError:
             time.sleep(.05)
     address = f"ws://127.0.0.1:{port}"
-    for name, title in (("阿青", "今晚恐怖游戏"), ("小林", "周末四人开黑")):
+    for name, title in (("玩家二", "今晚恐怖游戏"), ("玩家三", "周末四人开黑")):
         peer = RoomClient()
         peer.login(address, name)
         peer.command("create", title=title)

@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
     window._room_panel.name.setText("玩家一")
     window._room_panel.share.setChecked(True)
     window._room_history.clear(now - 300)
-    names = ("玩家一", "阿青", "小林", "阿澈")
+    names = ("玩家一", "玩家二", "玩家三", "玩家四")
     keys = ("self", "peer1", "peer2", "peer3")
     members = []
     for index, (key, name) in enumerate(zip(keys, names)):

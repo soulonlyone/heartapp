@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
             window._tabbar.select(0)
             panel = window._room_panel
             panel.address.setText(f"ws://127.0.0.1:{relay.port}")
-            panel.name.setText(("玩家一", "朋友")[index])
+            panel.name.setText(("玩家一", "玩家二")[index])
         first, second = windows
         first._room_manage_btn.click()
         assert first._room_dialog.isVisible()
