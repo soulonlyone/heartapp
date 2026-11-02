@@ -10,6 +10,9 @@
 > **它只描述观察值。** 不会把心率升高解释成紧张、压力或兴奋——
 > 那需要更多上下文，程序不替你做这个判断。
 
+当前开发分支的合并范围、验证记录与发布前待办见 [main 合并交接说明](docs/merge-handoff.md)。
+旧版 Release 与下方历史截图不代表当前开发分支的全部界面和功能。
+
 ![实时监测](screenshot.png)
 
 <details>
@@ -74,7 +77,7 @@ Docker Compose 和 HTTPS 反向代理示例，不绑定公共服务器。局域�
 | **会话** | 一次游戏/工作过程。点「开始记录」到「停止记录」之间产生一条会话 |
 | **小窗** | 置顶浮动窗口，**玩游戏时不用切出来**就能看到当前心率和短时曲线 |
 | **回看** | 事后看整段曲线，可缩放、平移、悬停读数，缺失数据处留空 |
-| **本地** | 数据全部存在本机 SQLite，不上传任何服务器，随时导出 |
+| **本地** | 本人的历史记录保存在本机 SQLite，可随时导出；联机主动开启共享后，实时心率经所选服务器转发 |
 
 记录过程中**不需要你做任何操作**——不要求手动打点，也不解释心率代表什么情绪。
 
@@ -281,6 +284,16 @@ data\心率记录_YYYYmmdd_HHMMSS_events.csv  ← 事件 CSV（旧版本数据�
 程序启动时会自动收尾残留会话，并把结束时间设为**最后一条样本的时间**，
 不会出现「一次记录持续了两天」这种离谱时长。
 
+**双击联机脚本提示「不是内部或外部命令」**
+
+请更新开发分支后重试。Windows `.bat` 必须使用 CRLF 换行；
+编辑器若把它保存为 LF，`cmd.exe` 可能截断中文提示并当成命令执行。
+也可在仓库目录通过 PowerShell 直接启动：
+
+```powershell
+.venv\Scripts\python.exe tools\room_demo.py
+```
+
 ## 从源码运行 / 自己打包
 
 需要 Python 3.9+。
@@ -305,9 +318,10 @@ python -m venv .venv
 ### 跑测试
 
 ```bat
-.venv\Scripts\python.exe run_tests.py            :: 124 个单元测试
+.venv\Scripts\python.exe run_tests.py            :: 当前 157 个单元测试
 .venv\Scripts\python.exe smoke_test.py           :: 后端全链路
 .venv\Scripts\python.exe tools\qt_smoke_test.py  :: 界面全流程（自动操作）
+.venv\Scripts\python.exe tools\room_smoke_test.py :: 双客户端联机全流程
 ```
 
 ## 项目结构
@@ -340,7 +354,7 @@ heartapp/
 ├─ tests/            单元测试
 ├─ docs/             设计文档（含 design/reference-d.png）、签名说明、发布说明
 ├─ AGENTS.md         给 AI 协作者的开发指南
-└─ requirements.txt  依赖（bleak + PySide6）
+└─ requirements.txt  依赖（bleak + PySide6-Essentials + websockets）
 ```
 
 ## 设计说明

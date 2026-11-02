@@ -83,7 +83,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 127 个）
+# 跑全部单元测试（当前 157 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）
@@ -161,6 +161,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 - 打包后要签名（`tools/sign_exe.ps1`，`build_exe.py` 会自动调）
 - **`.ps1` 脚本必须存成 UTF-8 with BOM**：Windows PowerShell 5.1 读无 BOM 文件会按
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意
+- **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
+  截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
 - PyInstaller `--exclude-module`：GUI 版排除 `tkinter`，CLI 版排除 `tkinter`
   + `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
 
@@ -243,10 +245,13 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 
 - [ ] 深色主题（令牌结构已支持，只需加一套色值 + 切换开关）
 - [ ] 多设备同时记录（engine 目前单源）
-- [ ] 趋势图支持缩放/拖动
+- [x] 趋势图支持缩放/拖动
 - [ ] 「本次记录」信息层级可再降密度（均值大字 + 小字详情）
 - [ ] 打包体积优化（PySide6 裁掉不用的 Qt 模块，可省 10MB+）
 - [ ] 真机长期稳定性验证（目前只在 OPPO Watch X2 上探针验证过服务存在）
+
+合并 main 前另读 [docs/merge-handoff.md](docs/merge-handoff.md)，其中列出当前协议 v2、
+验证结果、数据边界和发布前未完成项。仅补文档可沿用最近一次代码验证；合并后需重新验证。
 
 ## 12. 不要做的事
 

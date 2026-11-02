@@ -4,6 +4,10 @@
 不需要中央账号或公共服务器；所有参与者必须连接同一台服务端。
 服务端不导入 GUI、BLE 或数据库，只依赖 Python 3.9+ 和 websockets。
 
+当前为协议 v2 的源码测试版。Python 本机转发与双客户端流程已验证；
+Docker 构建运行、公网 WSS 和压力测试尚未完成，不将下述配置视为已验证的线上容量。
+合并与升级检查见 [main 合并交接说明](../docs/merge-handoff.md)。
+
 ## 本机 / 局域网试用
 
 在仓库根目录安装 `server/requirements.txt` 后运行：
