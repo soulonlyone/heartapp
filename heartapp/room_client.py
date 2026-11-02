@@ -18,6 +18,8 @@ class RoomClient:
         self._thread = None
         self._generation = 0
         self._reading = (None, False, False, 0.0)
+        self._commands = deque(maxlen=8)
+        self._leave_requested = False
 
     def _emit(self, generation: int, kind: str, **payload) -> None:
         with self._lock:
@@ -37,17 +39,36 @@ class RoomClient:
             self._reading = (bpm if sharing else None, bool(sharing), bool(simulated), time.monotonic())
 
     def connect(self, address: str, name: str, *, code: str = "", password: str = "") -> None:
+        """演示 / 工具兼容入口：先登录，再创建或加入房间。"""
+        self.login(address, name, password=password)
+        self.command("join" if code else "create", code=code)
+
+    def login(self, address: str, name: str, *, password: str = "") -> None:
         address = server_url(address)
         name = name.strip()
         if not 1 <= len(name) <= 24 or any(ord(c) < 32 for c in name):
             raise ValueError("请输入 1～24 个可见字符作为昵称")
-        code = room_code(code) if code else ""
         self.leave()
         stop = self._stop = threading.Event()
         generation = self._generation
-        self._thread = threading.Thread(target=self._run, args=(generation, stop, address, name, code, password),
+        self._thread = threading.Thread(target=self._run, args=(generation, stop, address, name, password),
                                         name="heartapp-room", daemon=True)
         self._thread.start()
+
+    def command(self, action: str, *, code: str = "", title: str = "") -> None:
+        packet = dict(type=action)
+        if action == "join":
+            packet["room"] = room_code(code)
+        if action == "create":
+            packet["title"] = title.strip()
+        with self._lock:
+            self._commands.append(packet)
+            if action == "leave":
+                self._leave_requested = True
+                self._reading = (None, False, False, 0.0)
+
+    def leave_room(self) -> None:
+        self.command("leave")
 
     def leave(self) -> None:
         self._stop.set()
@@ -55,44 +76,54 @@ class RoomClient:
             self._generation += 1
             self._events.clear()
             self._reading = (None, False, False, 0.0)
+            self._commands.clear()
+            self._leave_requested = False
 
-    def _run(self, generation: int, stop: threading.Event, address: str, name: str, code: str, password: str) -> None:
+    def _run(self, generation: int, stop: threading.Event, address: str, name: str, password: str) -> None:
         try:
-            asyncio.run(self._session(generation, stop, address, name, code, password))
+            asyncio.run(self._session(generation, stop, address, name, password))
         except Exception as exc:  # noqa: BLE001
             # 网络线程最后一道边界；只通知联机页，不退出采集或 GUI。
             self._emit(generation, "room_error", message=f"联机连接失败：{type(exc).__name__}")
 
     async def _session(self, generation: int, stop: threading.Event, address: str,
-                       name: str, code: str, password: str) -> None:
+                       name: str, password: str) -> None:
         from websockets.asyncio.client import connect
         from websockets.exceptions import ConnectionClosed
 
-        joined, retry = False, 0
+        logged, retry, token = False, 0, ""
         while not stop.is_set():
-            self._emit(generation, "room_status", message="正在重新连接房间…" if joined else "正在连接服务器…")
+            self._emit(generation, "room_status", message="正在重新连接服务器…" if logged else "正在登录服务器…")
             try:
-                async with connect(address, compression=None, max_size=16384, max_queue=4, open_timeout=5,
+                async with connect(address, compression=None, max_size=65536, max_queue=4, open_timeout=5,
                                    close_timeout=1, ping_interval=20, ping_timeout=20, proxy=None) as socket:
                     if stop.is_set():
                         return
-                    await socket.send(encode(dict(type="join" if code else "create", version=VERSION,
-                                                  name=name, room=code, password=password)))
+                    await socket.send(encode(dict(type="login", version=VERSION,
+                                                  name=name, password=password, resume_token=token)))
                     welcome = decode(await asyncio.wait_for(socket.recv(), 8))
                     if welcome.get("type") == "error":
                         self._emit(generation, "room_error", message=str(welcome.get("message", "连接被拒绝")))
                         return
-                    if welcome.get("type") != "welcome" or welcome.get("version") != VERSION:
+                    if welcome.get("type") != "login_ok" or welcome.get("version") != VERSION:
                         raise ValueError("联机协议不兼容")
-                    code = room_code(welcome["room"])
-                    joined, retry = True, 0
-                    self._emit(generation, "room_welcome", **welcome)
+                    old_token = token
+                    token = welcome["resume_token"]
+                    logged, retry, in_room = True, 0, False
+                    with self._lock:
+                        leaving = self._leave_requested
+                    self._emit(generation, "server_login", resumed=old_token == token and bool(token),
+                               self_id=welcome["self_id"], room=welcome.get("room", ""), leaving=leaving)
                     next_send, last_sharing = 0.0, None
                     while not stop.is_set():
                         with self._lock:
                             bpm, sharing, simulated, stamp = self._reading
+                            commands = list(self._commands)
+                            self._commands.clear()
                         now = time.monotonic()
-                        if now >= next_send or sharing != last_sharing:
+                        for command in commands:
+                            await socket.send(encode(command))
+                        if in_room and (now >= next_send or sharing != last_sharing):
                             await socket.send(encode(dict(type="reading", bpm=bpm if now - stamp <= 5 else None,
                                                           sharing=sharing, simulated=simulated)))
                             next_send, last_sharing = now + 1, sharing
@@ -103,18 +134,40 @@ class RoomClient:
                         if packet.get("type") == "error":
                             self._emit(generation, "room_error", message=str(packet.get("message", "房间请求失败")))
                             return
+                        if packet.get("type") == "welcome":
+                            room_code(packet["room"])
+                            in_room = True
+                            with self._lock:
+                                leaving = self._leave_requested
+                            if not leaving:
+                                self._emit(generation, "room_welcome", **packet)
+                            else:
+                                await socket.send(encode(dict(type="leave")))
+                        if packet.get("type") == "left":
+                            in_room = False
+                            with self._lock:
+                                self._leave_requested = False
+                            self._emit(generation, "room_left")
+                        if packet.get("type") == "command_error":
+                            self._emit(generation, "room_command_error", message=str(packet.get("message", "房间操作失败")))
+                        if packet.get("type") == "rooms":
+                            rooms = packet.get("rooms")
+                            if not isinstance(rooms, list) or len(rooms) > 100 or any(not isinstance(r, dict) for r in rooms):
+                                raise ValueError("房间目录无效")
+                            self._emit(generation, "server_rooms", rooms=rooms, total=packet.get("total", len(rooms)))
                         if packet.get("type") == "snapshot":
                             members = packet.get("members")
                             if not isinstance(members, list) or len(members) > 4 or any(not isinstance(m, dict) for m in members):
                                 raise ValueError("房间数据无效")
                             self._emit(generation, "room_snapshot", members=members)
+                    await socket.send(encode(dict(type="logout")))
             except (OSError, ConnectionClosed, asyncio.TimeoutError):
-                if not joined:
+                if not logged:
                     self._emit(generation, "room_error", message="无法连接服务器，请检查地址、端口、证书或网络")
                     return
                 retry += 1
                 if retry > 5:
-                    self._emit(generation, "room_error", message="重连失败，请重新加入房间；本地记录不受影响")
+                    self._emit(generation, "room_error", message="重连失败，请重新登录服务器；本地记录不受影响")
                     return
                 self._emit(generation, "room_status", message="连接已中断，正在重连；本地记录继续", clear=True)
                 deadline = time.monotonic() + min(2 ** (retry - 1), 8)

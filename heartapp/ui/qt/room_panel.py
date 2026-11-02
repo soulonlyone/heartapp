@@ -5,10 +5,10 @@ import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QApplication, QCheckBox, QHBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
-from .editorial import Button, INK, MUTED, PAPER, RED, RULE, label, serif
-from .editorial_layout import EditorialLayout
+from .editorial import INK, MUTED, PAPER, RED, RULE, serif
+from .lobby_panel import RoomPanel
 from ...room_client import RoomClient
 from ...room_protocol import room_code, server_url
 from ...room_history import RoomHistory, segments
@@ -30,6 +30,44 @@ class RoomActions:
         self._room_render_clock = 0.0
         self._room_notice = ""
         self._room_link_note = ""
+        self._server_logged = False
+        self._server_connecting = False
+        self._room_pending = False
+
+    def _sync_server_controls(self) -> None:
+        self._room_panel.set_state(logged=self._server_logged, connecting=self._server_connecting,
+                                   joined=bool(self._room_code), pending=self._room_pending)
+
+    def on_server_login(self) -> None:
+        panel = self._room_panel
+        try:
+            address = server_url(panel.address.text())
+            name = panel.name.text().strip()
+            if not 1 <= len(name) <= 24:
+                raise ValueError("请输入 1～24 个字符作为昵称")
+            self.store.set_setting("room_server", address)
+            self.store.set_setting("room_name", name)
+            self._room_client.login(address, name, password=panel.password.text())
+        except Exception as exc:  # noqa: BLE001
+            panel.server_status.setText(f"未能登录：{exc}")
+            return
+        self._server_connecting = True
+        self._room_notice = ""
+        panel.server_status.setText("正在登录服务器…")
+        self._sync_server_controls()
+
+    def on_server_logout(self) -> None:
+        self._room_client.leave()
+        self._server_logged = self._server_connecting = False
+        self._clear_room_view()
+        self._room_panel.set_rooms([])
+        self._room_panel.password.clear()
+        self._room_panel.server_status.setText("未登录 · 密码不会保存到磁盘")
+        self._sync_server_controls()
+
+    def on_room_refresh(self) -> None:
+        if self._server_logged:
+            self._room_client.command("list")
 
     def _show_room_dialog(self) -> None:
         self._room_dialog.show()
@@ -57,7 +95,7 @@ class RoomActions:
         if self._live_range.itemText(2) != range_text:
             self._live_range.setItemText(2, range_text)
         if not joined:
-            message = "正在连接房间…" if self._room_active else self._room_notice or "个人模式 · 可邀请朋友一起查看心率"
+            message = "正在连接房间…" if self._room_active else self._room_notice or ("服务器已登录 · 选择或创建房间" if self._server_logged else "个人模式 · 可邀请朋友一起查看心率")
             self._live_room_status.setText(message)
             self._live_room_status.setToolTip(message)
             return
@@ -123,24 +161,32 @@ class RoomActions:
 
     def on_room_connect(self, *, create: bool) -> None:
         panel = self._room_panel
+        if not self._server_logged:
+            panel.status.setText("请先登录服务器")
+            return
         try:
-            address = server_url(panel.address.text())
             code = "" if create else room_code(panel.code.text())
-            self._room_client.connect(address, panel.name.text(), code=code, password=panel.password.text())
-            self.store.set_setting("room_server", address)
-            self.store.set_setting("room_name", panel.name.text().strip())
+            self._room_client.command("create" if create else "join", code=code, title=panel.title.text())
         except (ValueError, OSError) as exc:
             panel.status.setText(str(exc))
             return
         self._room_active = True
+        self._room_pending = True
         self._room_notice = ""
         panel.share.setChecked(False)
-        panel.set_active(True)
-        panel.status.setText("正在连接服务器…")
+        self._sync_server_controls()
+        panel.status.setText("正在进入房间…")
 
     def on_room_leave(self) -> None:
-        self._room_client.leave()
+        self._room_client.leave_room()
+        self._clear_room_view()
+        self._room_pending = True
+        self._room_panel.status.setText("正在退出房间，服务器登录保持不变…")
+        self._sync_server_controls()
+
+    def _clear_room_view(self) -> None:
         self._room_active = False
+        self._room_pending = False
         self._room_link_note = ""
         self._room_notice = "已离开房间；本地记录继续"
         self._room_history.clear()
@@ -148,7 +194,7 @@ class RoomActions:
         self._room_chart.reset_view()
         self._room_members, self._room_self_id, self._room_code = [], "", ""
         self._room_panel.share.setChecked(False)
-        self._room_panel.set_active(False)
+        self._sync_server_controls()
         self._room_panel.set_members([], "")
         self._room_panel.status.setText("已离开房间；本地记录继续")
         self._room_overlay.set_members([], "")
@@ -173,7 +219,7 @@ class RoomActions:
         self._room_overlay.setVisible(not self._room_overlay.isVisible())
 
     def _toggle_active_overlay(self) -> None:
-        if self._room_active or self._room_overlay.isVisible():
+        if self._room_code or self._room_overlay.isVisible():
             self.on_room_overlay_toggle()
         else:
             self.on_overlay_toggle()
@@ -188,27 +234,58 @@ class RoomActions:
 
     def _poll_room(self) -> None:
         for kind, payload in self._room_client.poll_events():
-            if kind == "room_error":
-                self.on_room_leave()
+            if kind == "server_login":
+                if not payload.get("resumed") and self._room_code:
+                    self._clear_room_view()
+                    self._room_notice = "服务器会话已更新，请重新选择房间"
+                self._server_logged, self._server_connecting = True, False
+                self._room_pending = bool(payload.get("room")) or bool(payload.get("leaving"))
+                self._room_panel.password.clear()
+                self._room_panel.server_status.setText("已登录 · 本次运行保持登录；退房不会退出服务器")
+                if not self._room_code:
+                    self._room_panel.status.setText("登录成功，可选择列表中的房间或创建一个新房间。")
+                self._sync_server_controls()
+            elif kind == "server_rooms":
+                self._room_panel.set_rooms(payload["rooms"])
+            elif kind == "room_left":
+                self._clear_room_view()
+                self._room_panel.status.setText("已退出房间，服务器仍保持登录。可直接选择另一个房间。")
+                self._sync_server_controls()
+            elif kind == "room_command_error":
+                self._room_pending = False
+                self._room_active = bool(self._room_code)
+                self._room_panel.status.setText(payload["message"])
+                self._room_notice = payload["message"]
+                self._sync_server_controls()
+            elif kind == "room_error":
+                self.on_server_logout()
                 self._room_notice = payload["message"]
                 self._room_panel.status.setText(payload["message"])
+                self._room_panel.server_status.setText(payload["message"])
             elif kind == "room_status":
                 self._room_link_note = payload["message"]
                 self._room_panel.status.setText(payload["message"])
                 if payload.get("clear"):
+                    self._server_logged, self._server_connecting = False, True
+                    self._room_pending = False
+                    self._room_panel.server_status.setText("连接已断开，正在恢复登录…")
+                    self._sync_server_controls()
                     self._room_history.gap(time.monotonic())
-                    self._room_members = []
+                    self._room_members = [dict(m, bpm=None, connected=False) for m in self._room_members]
                     self._room_panel.set_members([], self._room_self_id)
                     self._room_overlay.set_members([], self._room_self_id)
             elif kind == "room_welcome":
                 if self._room_code != payload["room"]:
                     self._room_history.clear(time.monotonic())
+                    for stamp, bpm in self._live:
+                        self._room_history.append("self", stamp, bpm)
                     self._room_chart.reset_view()
                 self._room_code = payload["room"]
                 self._room_link_note = ""
                 self._room_self_id = payload["self_id"]
                 self._room_panel.code.setText(self._room_code)
-                self._room_panel.set_active(True, joined=True)
+                self._room_active, self._room_pending = True, False
+                self._sync_server_controls()
                 self._room_dialog.hide()
                 self._tabbar.select(0)
                 self._room_panel.status.setText(f"房间 {self._room_code} · 已加入，按需开启共享")
@@ -225,108 +302,6 @@ class RoomActions:
                 self._room_panel.set_members(self._room_members, self._room_self_id)
         if self._room_code:
             self._chart_dirty = True
-
-
-class RoomPanel(QWidget):
-    def __init__(self, window) -> None:
-        super().__init__()
-        self.window_owner = window
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 20, 0, 10)
-        layout.setSpacing(12)
-        title = label("一起，看见心跳")
-        title.setFont(serif(32))
-        layout.addWidget(title)
-        note = label("连接你或朋友部署的服务器，创建一个最多 4 人的私人房间。", 12, True)
-        note.setWordWrap(True)
-        layout.addWidget(note)
-        form = QHBoxLayout()
-        left, right = QVBoxLayout(), QVBoxLayout()
-        left.addWidget(label("服务器地址", 12))
-        self.address = QLineEdit(window.store.get_setting("room_server", "ws://127.0.0.1:8765"))
-        self.address.setPlaceholderText("https://hr.example.com 或 ws://IP:端口")
-        left.addWidget(self.address)
-        right.addWidget(label("你的昵称", 12))
-        self.name = QLineEdit(window.store.get_setting("room_name", "玩家"))
-        self.name.setMaxLength(24)
-        right.addWidget(self.name)
-        form.addLayout(left, 2)
-        form.addLayout(right, 1)
-        layout.addLayout(form)
-        access = QHBoxLayout()
-        self.password = QLineEdit()
-        self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password.setPlaceholderText("服务器访问密码（部署者设置了才需要填写）")
-        access.addWidget(self.password, 2)
-        self.code = QLineEdit()
-        self.code.setPlaceholderText("8 位房间码")
-        self.code.setMaxLength(12)
-        access.addWidget(self.code, 1)
-        layout.addLayout(access)
-        controls = QHBoxLayout()
-        self.create = Button("创建房间", primary=True)
-        self.join = Button("加入房间")
-        self.leave = Button("离开房间")
-        self.copy = Button("复制邀请")
-        self.create.clicked.connect(lambda: window.on_room_connect(create=True))
-        self.join.clicked.connect(lambda: window.on_room_connect(create=False))
-        self.leave.clicked.connect(window.on_room_leave)
-        self.copy.clicked.connect(window.on_room_copy)
-        for button in (self.create, self.join, self.leave, self.copy):
-            controls.addWidget(button)
-        controls.addStretch()
-        layout.addLayout(controls)
-        self.share = QCheckBox("共享我的实时心率（含模拟标识）")
-        self.share.setChecked(False)
-        self.share.toggled.connect(lambda _: window._publish_room_reading())
-        layout.addWidget(self.share)
-        privacy = label("共享默认关闭。房间成员可临时查看最近30分钟共享曲线，服务器运营者可看到读数。队友曲线不写入历史；公网建议使用 HTTPS / WSS。", 11, True)
-        privacy.setWordWrap(True)
-        layout.addWidget(privacy)
-        layout.addWidget(EditorialLayout._rule())
-        self.status = label("尚未加入房间", 13, True)
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["成员", "心率", "状态"])
-        self.table.verticalHeader().hide()
-        self.table.setShowGrid(False)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.table.setColumnWidth(0, 220)
-        self.table.setColumnWidth(1, 100)
-        self.table.setStyleSheet(f"QTableWidget {{ background: {PAPER}; color: {INK}; border: none; }} "
-                                f"QHeaderView::section {{ background: {PAPER}; color: {MUTED}; border: none; padding: 8px; }}")
-        self.table.verticalHeader().setDefaultSectionSize(44)
-        layout.addWidget(self.table, 1)
-        self.table.hide()
-        show = Button("显示 / 隐藏联机小窗")
-        show.setMaximumWidth(230)
-        show.clicked.connect(window.on_room_overlay_toggle)
-        layout.addWidget(show)
-        show.hide()
-        self.set_active(False)
-
-    def set_active(self, active: bool, joined: bool = False) -> None:
-        for widget in (self.address, self.name, self.password, self.code, self.create, self.join):
-            widget.setEnabled(not active)
-        self.leave.setEnabled(active)
-        self.copy.setEnabled(joined)
-        self.share.setEnabled(joined)
-
-    def set_members(self, members: list, self_id: str) -> None:
-        self.table.setRowCount(len(members))
-        for row, member in enumerate(members):
-            name = str(member.get("name", "玩家"))[:24] + (" · 我" if member.get("id") == self_id else "")
-            bpm = member.get("bpm")
-            valid = type(bpm) is int and 1 <= bpm <= 300
-            status = "未共享" if not member.get("sharing") else "实时" if valid else "等待读数"
-            if member.get("simulated"):
-                status = "模拟 · " + status
-            for col, text in enumerate((name, str(bpm) + " bpm" if valid else "—", status)):
-                self.table.setItem(row, col, QTableWidgetItem(text))
 
 
 class RoomOverlay(QWidget):
@@ -395,6 +370,8 @@ class RoomOverlay(QWidget):
             p.setPen(QColor(MUTED))
             p.drawText(QPointF(223, y + 19), "bpm")
             detail = "模拟" if member.get("simulated") else "实时"
+            if member.get("connected") is False:
+                detail = "重连中"
             if not member.get("sharing"):
                 detail += " · 仅本机" if member.get("id") == self.self_id else " · 未共享"
             elif not valid:

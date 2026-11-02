@@ -53,6 +53,8 @@ class MemberLegend(QPushButton):
         p.setFont(QFont("Microsoft YaHei UI", 8))
         p.setPen(QColor(MUTED))
         detail = "模拟" if self.member.get("simulated") else "bpm"
+        if self.member.get("connected") is False:
+            detail = "重连中"
         if self.key == "self" and not self.member.get("sharing"):
             detail += " · 仅本机"
         p.drawText(QPointF(26 + width, 51), detail)

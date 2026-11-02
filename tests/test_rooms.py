@@ -6,9 +6,10 @@ import unittest
 import urllib.request
 
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed
 
 from heartapp.relay import Relay, start_server
-from heartapp.room_protocol import decode, encode, room_code, server_url
+from heartapp.room_protocol import VERSION, decode, encode, room_code, server_url
 
 
 class TestRoomAddress(unittest.TestCase):
@@ -37,6 +38,10 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         for client in self.clients:
+            try:
+                await client.send(encode(dict(type="logout")))
+            except ConnectionClosed:
+                pass
             await client.close()
         self.server.close()
         await self.server.wait_closed()
@@ -46,10 +51,14 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
     async def open(self, name="玩家", code="", **fields):
         client = await connect(self.url, proxy=None)
         self.clients.append(client)
-        hello = dict(type="join" if code else "create", version=1, name=name, room=code)
+        hello = dict(type="login", version=VERSION, name=name)
         hello.update(fields)
         await client.send(encode(hello))
         response = decode(await client.recv())
+        if response.get("type") == "error":
+            return client, response
+        await client.send(encode(dict(type="join" if code else "create", room=code)))
+        response = await self.receive(client, lambda p: p.get("type") in ("welcome", "command_error", "error"))
         return client, response
 
     async def receive(self, client, predicate):
@@ -91,10 +100,10 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
         first, welcome = await self.open()
         await self.open("二号", welcome["room"])
         _, full = await self.open("三号", welcome["room"])
-        self.assertEqual(full["type"], "error")
+        self.assertEqual(full["type"], "command_error")
         self.assertIn("已满", full["message"])
         _, missing = await self.open(code="ABCDEFGH")
-        self.assertEqual(missing["type"], "error")
+        self.assertEqual(missing["type"], "command_error")
         _, incompatible = await self.open(version=99)
         self.assertIn("版本", incompatible["message"])
 
@@ -117,6 +126,13 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
         client, welcome = await self.open()
         await client.close()
         for _ in range(100):
+            member = self.relay.rooms[welcome["room"]][welcome["self_id"]]
+            if member.socket is None:
+                break
+            await asyncio.sleep(.01)
+        self.assertFalse(self.relay.snapshot(welcome["room"])["members"][0]["connected"])
+        member.offline_since -= 31
+        for _ in range(150):
             if welcome["room"] not in self.relay.rooms:
                 break
             await asyncio.sleep(.01)
@@ -124,7 +140,7 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
 
     async def test_flood_is_rejected(self):
         client, _ = await self.open()
-        for _ in range(7):
+        for _ in range(9):
             await self.reading(client, 80)
         error = await self.receive(client, lambda p: p.get("type") == "error")
         self.assertIn("频繁", error["message"])
@@ -136,4 +152,60 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
                 return response.status, response.read()
         status, body = await asyncio.to_thread(fetch)
         self.assertEqual(status, 200)
-        self.assertIn(b"relay v1 OK", body)
+        self.assertIn(b"relay v2 OK", body)
+
+    async def login(self, **fields):
+        client = await connect(self.url, proxy=None)
+        self.clients.append(client)
+        hello = dict(type="login", version=VERSION, name="大厅玩家")
+        hello.update(fields)
+        await client.send(encode(hello))
+        return client, decode(await client.recv())
+
+    async def test_login_lists_rooms_without_joining_and_leave_keeps_login(self):
+        creator, welcome = await self.open("房主")
+        lobby, login = await self.login()
+        self.assertEqual(login["type"], "login_ok")
+        self.assertEqual(login["room"], "")
+        directory = await self.receive(lobby, lambda p: p.get("type") == "rooms")
+        self.assertEqual(directory["rooms"][0]["room"], welcome["room"])
+        self.assertNotIn("bpm", directory["rooms"][0])
+        await lobby.send(encode(dict(type="join", room=welcome["room"])))
+        await self.receive(lobby, lambda p: p.get("type") == "welcome")
+        await lobby.send(encode(dict(type="leave")))
+        await self.receive(lobby, lambda p: p.get("type") == "left")
+        self.assertIn(login["resume_token"], self.relay.sessions)
+        await lobby.send(encode(dict(type="create", title="换一个房间")))
+        new_room = await self.receive(lobby, lambda p: p.get("type") == "welcome")
+        self.assertEqual(new_room["room_name"], "换一个房间")
+
+    async def test_failed_join_stays_logged_in(self):
+        client, login = await self.login()
+        await client.send(encode(dict(type="join", room="ABCDEFGH")))
+        await self.receive(client, lambda p: p.get("type") == "command_error")
+        await client.send(encode(dict(type="list")))
+        directory = await self.receive(client, lambda p: p.get("type") == "rooms")
+        self.assertEqual(directory["rooms"], [])
+        self.assertIn(login["resume_token"], self.relay.sessions)
+
+    async def test_resume_preserves_identity_and_room(self):
+        client, login = await self.login()
+        await client.send(encode(dict(type="create")))
+        room = await self.receive(client, lambda p: p.get("type") == "welcome")
+        await client.close()
+        for _ in range(100):
+            if self.relay.sessions[login["resume_token"]].socket is None:
+                break
+            await asyncio.sleep(.01)
+        resumed, response = await self.login(resume_token=login["resume_token"])
+        self.assertEqual(response["self_id"], login["self_id"])
+        self.assertEqual(response["room"], room["room"])
+        self.assertEqual((await self.receive(resumed, lambda p: p.get("type") == "welcome"))["room"], room["room"])
+
+    async def test_reading_before_login_is_rejected(self):
+        client = await connect(self.url, proxy=None)
+        self.clients.append(client)
+        await client.send(encode(dict(type="list", version=VERSION)))
+        response = decode(await client.recv())
+        self.assertEqual(response["type"], "error")
+        self.assertIn("登录", response["message"])

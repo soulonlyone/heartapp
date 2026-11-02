@@ -3,6 +3,7 @@
 !heartapp/
 !heartapp/__init__.py
 !heartapp/relay.py
+!heartapp/lobby.py
 !heartapp/room_protocol.py
 !server/
 !server/Dockerfile

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -95,9 +96,19 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
         first, second = windows
         first._room_manage_btn.click()
         assert first._room_dialog.isVisible()
+        with patch.object(first.store, "set_setting", side_effect=OSError("settings read only")):
+            first._room_panel.login.click()
+            assert not first._server_logged and first._room_panel.login.isEnabled()
+            assert "未能登录" in first._room_panel.server_status.text()
+        for window in windows:
+            window._room_panel.login.click()
+            wait(lambda: window._server_logged)
+            assert not window._room_code
         first._room_panel.create.click()
         wait(lambda: bool(first._room_code))
-        second._room_panel.code.setText(first._room_code)
+        wait(lambda: second._room_panel.rooms.rowCount() == 1)
+        second._room_panel.rooms.selectRow(0)
+        assert second._room_panel.code.text() == first._room_code
         second._room_panel.join.click()
         wait(lambda: len(first._room_members) == len(second._room_members) == 2)
         wait(lambda: first._live_chart_stack.currentIndex() == 1)
@@ -127,12 +138,26 @@ with tempfile.TemporaryDirectory(dir=out) as folder:
         assert first._room_chart.view is None and first._room_chart.full_range() == (-1800, 0)
         first._live_range.setCurrentIndex(0)
         print("[2] 两端读数与模拟标识转发 PASS")
+        identity = first._room_self_id
+        first.on_room_leave()
+        wait(lambda: first._server_logged and not first._room_pending and not first._room_code)
+        assert first._room_panel.create.isEnabled()
+        first._room_panel.code.setText(second._room_code)
+        first._room_panel.join.click()
+        wait(lambda: bool(first._room_code))
+        assert first._room_self_id == identity and not first._live_share.isChecked()
+        first._live_share.setChecked(True)
+        wait(lambda: all(m.get("bpm") for m in first._room_members))
+        print("    退房保持登录，并可直接重新加入 PASS")
         old_id = first._room_self_id
         old_code = first._room_code
+        old_socket = relay.relay.rooms[old_code][old_id].socket
         async def disconnect_one():
             await relay.relay.rooms[old_code][old_id].socket.close(code=1012, reason="测试重连")
         asyncio.run_coroutine_threadsafe(disconnect_one(), relay.loop).result(timeout=3)
-        wait(lambda: first._room_self_id != old_id)
+        wait(lambda: first._server_logged and relay.relay.rooms[old_code][old_id].socket is not None
+             and relay.relay.rooms[old_code][old_id].socket is not old_socket)
+        assert first._room_self_id == old_id
         wait(lambda: len(first._room_members) == 2 and all(m.get("bpm") for m in first._room_members))
         assert first._room_code == old_code
         print("    单人掉线后自动重新加入原房间 PASS")

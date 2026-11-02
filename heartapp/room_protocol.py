@@ -1,10 +1,10 @@
-"""联机协议 v1：只共享当前读数，不传设备地址和历史记录。"""
+"""联机协议 v2：独立服务器登录与房间操作，不传设备地址和历史记录。"""
 from __future__ import annotations
 
 import json
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = 1
+VERSION = 2
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 

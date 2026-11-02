@@ -54,7 +54,7 @@ class EditorialLayout:
         self._stack.addWidget(self._build_overlay_page())
         from .room_panel import RoomPanel
         self._room_dialog = QDialog(self)
-        self._room_dialog.setWindowTitle("联机房间")
+        self._room_dialog.setWindowTitle("服务器与房间")
         self._room_dialog.setMinimumWidth(620)
         dialog_layout = QVBoxLayout(self._room_dialog)
         dialog_layout.setContentsMargins(24, 16, 24, 20)
