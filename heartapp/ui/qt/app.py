@@ -47,6 +47,7 @@ from . import theme as T
 from . import widgets as W
 from .editorial import GlobalHotkey, Overlay, PAPER, ensure_light_palette
 from .editorial_layout import EditorialLayout
+from .chrome import FramelessWindow
 
 #: 实时趋势图显示最近多少秒
 LIVE_WINDOW_S = 300.0
@@ -146,7 +147,7 @@ class _Dialogs:
         return QMessageBox.question(parent, title, text) == QMessageBox.StandardButton.Yes
 
 
-class HeartAppWindow(EditorialLayout, QWidget):
+class HeartAppWindow(EditorialLayout, FramelessWindow):
     """主窗口。"""
 
     def __init__(self, store: HeartRateStore, engine: Engine, *, db_path: Optional[Path] = None) -> None:

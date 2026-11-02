@@ -141,14 +141,14 @@ class TestWindowPersistence(unittest.TestCase):
                 self.assertTrue(wait_until(lambda: window._session_id == sid, self.app))
                 with patch.object(store, "add_samples", side_effect=OSError("disk full")), \
                      patch.object(_Dialogs, "error") as error:
-                    window.close()
+                    window._titlebar.close_button.click()
                     self.assertTrue(wait_until(lambda: not window._closing, self.app))
                     self.assertTrue(window.isVisible())
                     self.assertTrue(window.isEnabled())
                     self.assertTrue(engine.is_recording)
                     self.assertEqual(len(engine._pending), 1)
                     error.assert_called_once()
-                window.close()
+                window._titlebar.close_button.click()
                 self.assertTrue(wait_until(lambda: window._closed, self.app))
                 self.assertFalse(window.isVisible())
                 self.assertFalse(window._overlay.isVisible())

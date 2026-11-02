@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from PySide6.QtCore import QPoint, Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from heartapp.engine import Engine  # noqa: E402
@@ -67,6 +69,28 @@ try:
     print("[1] 窗口构建")
     pump(1.2)
     print(f"    尺寸 {window.width()}x{window.height()}")
+    if not window.windowFlags() & Qt.WindowType.FramelessWindowHint:
+        problems.append("主窗口仍有系统边框")
+    normal = window.geometry()
+    window._titlebar.maximize_button.click()
+    pump(.3)
+    if not window.isMaximized() or window._titlebar.maximize_button.toolTip() != "还原":
+        problems.append("自定义最大化按钮无效")
+    available = window.screen().availableGeometry()
+    if not available.adjusted(-2, -2, 2, 2).contains(window.geometry()):
+        problems.append("最大化覆盖了任务栏区域")
+    window._titlebar.maximize_button.click()
+    pump(.3)
+    if window.isMaximized() or window.size() != normal.size():
+        problems.append("自定义还原按钮未恢复窗口尺寸")
+    QTest.mouseDClick(window._titlebar, Qt.MouseButton.LeftButton, pos=QPoint(180, 18))
+    pump(.2)
+    if not window.isMaximized():
+        problems.append("双击顶部未最大化")
+    QTest.mouseDClick(window._titlebar, Qt.MouseButton.LeftButton, pos=QPoint(180, 18))
+    pump(.2)
+    if window.isMaximized():
+        problems.append("双击顶部未还原")
 
     print("[2] 模拟模式 + 连接")
     window._sim_chip.setChecked(True)
@@ -89,7 +113,7 @@ try:
         problems.append("过期读数仍显示为实时心率")
     print("    最小化主窗口，检查小窗与持续采样")
     samples_before = window._rec_n
-    window.showMinimized()
+    window._titlebar.minimize_button.click()
     pump(3.0)
     if not window.isMinimized() or not overlay_visible():
         problems.append("主窗口最小化后小窗消失")
@@ -217,7 +241,7 @@ try:
         problems.append("无权限时没有自动兜底到数据目录")
 
 finally:
-    window.close()
+    window._titlebar.close_button.click()
     deadline = time.monotonic() + 5
     while not window._closed and time.monotonic() < deadline:
         pump(.05)

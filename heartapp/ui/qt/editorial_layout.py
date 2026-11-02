@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 from ... import __version__
 from ...simulator import DEFAULT_PROFILE, PROFILES
 from .editorial import BrandMark, Button, CapsuleCombo, Curve, INK, MUTED, Navigation, PAPER, RED, RULE, Reading, label, serif
+from .chrome import TitleBar
 
 
 class EditorialLayout:
@@ -25,11 +26,14 @@ class EditorialLayout:
         outer = QVBoxLayout(self)
         outer.setContentsMargins(36, 16, 36, 16)
         outer.setSpacing(12)
-        header = QHBoxLayout()
+        self._titlebar = TitleBar(self)
+        header = self._titlebar.row
         mark = BrandMark()
+        mark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         header.addWidget(mark)
         brand = label("HeartApp")
         brand.setFont(serif(25))
+        brand.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         header.addWidget(brand)
         header.addStretch()
         self._tabbar = Navigation()
@@ -39,7 +43,8 @@ class EditorialLayout:
         self._device_status = Button("●  连接手表")
         self._device_status.clicked.connect(self._show_connection)
         header.addWidget(self._device_status)
-        outer.addLayout(header)
+        self._titlebar.add_controls()
+        outer.addWidget(self._titlebar)
         outer.addWidget(self._rule())
         self._build_connection_dialog()
         self._stack = QStackedWidget()
