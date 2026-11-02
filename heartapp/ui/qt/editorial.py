@@ -246,13 +246,13 @@ class Navigation(QWidget):
         from PySide6.QtWidgets import QHBoxLayout
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(20)
+        layout.setSpacing(14)
         self.buttons = []
         self.index = 0
-        for index, text in enumerate(("实时", "回看", "小窗")):
+        for index, text in enumerate(("实时", "回看", "小窗", "联机")):
             button = QPushButton(text)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setFixedSize(52, 36)
+            button.setFixedSize(46, 36)
             button.clicked.connect(lambda checked=False, i=index: self.select(i))
             layout.addWidget(button)
             self.buttons.append(button)

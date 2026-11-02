@@ -58,6 +58,12 @@ heartapp/
 **分层纪律**：业务逻辑（hr/metrics/store/engine）**不得** import 任何 UI 模块。
 两个 UI 共享同一套逻辑层，改逻辑时两边都要能跑。
 
+联机初版：`room_protocol.py` 为纯协议，`relay.py` 为独立 asyncio 服务，`room_client.py`
+为独立网络线程；Qt 的 `room_panel.py` 提供联机页与多人小窗。服务端无需 Qt / BLE / 数据库。
+联机不依赖公共服务器；共享默认关闭、不记录远端历史，密码不落盘，日志不含房间码或心率。
+协议变更需要版本检查；队友心率过期必须清空。联机改动还需跑 `tools/room_smoke_test.py`，
+覆盖真实双客户端、共享开关、掉线重连、服务故障及本地保存独立性。
+
 ## 4. 并发模型（改代码前必须理解）
 
 ```

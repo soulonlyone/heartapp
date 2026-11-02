@@ -8,6 +8,9 @@ PySide6-Essentials>=6.6,<7
 # bleak 在 Windows 上会自动带上 winrt-* 系列包，负责和系统蓝牙栈打交道。
 bleak>=1.0,<2.0
 
+# 联机客户端及独立转发服务，共享轻量 WebSocket 协议。
+websockets>=15,<16
+
 # 说明：
 # * 数据库用自带的 sqlite3。
 # * 图表、表盘、玻璃面板全部用 QPainter 手绘，所以不需要 matplotlib / numpy。

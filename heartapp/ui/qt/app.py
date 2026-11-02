@@ -48,6 +48,7 @@ from . import widgets as W
 from .editorial import GlobalHotkey, Overlay, PAPER, ensure_light_palette
 from .editorial_layout import EditorialLayout
 from .chrome import FramelessWindow
+from .room_panel import RoomActions, RoomOverlay
 
 #: 实时趋势图显示最近多少秒
 LIVE_WINDOW_S = 300.0
@@ -147,7 +148,7 @@ class _Dialogs:
         return QMessageBox.question(parent, title, text) == QMessageBox.StandardButton.Yes
 
 
-class HeartAppWindow(EditorialLayout, FramelessWindow):
+class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
     """主窗口。"""
 
     def __init__(self, store: HeartRateStore, engine: Engine, *, db_path: Optional[Path] = None) -> None:
@@ -188,6 +189,7 @@ class HeartAppWindow(EditorialLayout, FramelessWindow):
         self._closed = False
         self._closing = False
         self._close_ready = False
+        self._init_room()
 
         self.setWindowTitle(f"{APP_NAME} — PC 心率监控")
         self.resize(1120, 780)
@@ -196,8 +198,11 @@ class HeartAppWindow(EditorialLayout, FramelessWindow):
         self._build_ui()
         self._refresh_history()
         self._overlay = Overlay(self.store)
+        self._room_overlay = RoomOverlay(self.store)
         self._overlay.set_passthrough(self._passthrough.isChecked())
-        self._overlay_hotkey = GlobalHotkey(self.on_overlay_toggle)
+        self._room_overlay.set_passthrough(self._passthrough.isChecked())
+        self._room_overlay.setWindowOpacity(self.store.get_int_setting("overlay_opacity", 92) / 100)
+        self._overlay_hotkey = GlobalHotkey(self._toggle_active_overlay)
         if not self._overlay_hotkey.registered:
             self._hotkey_hint.setText("快捷键不可用或被占用，请使用此页按钮显示 / 隐藏小窗")
 
@@ -217,6 +222,7 @@ class HeartAppWindow(EditorialLayout, FramelessWindow):
         if self._closed:
             return
         try:
+            self._poll_room()
             for kind, payload in self.engine.poll_events():
                 try:
                     self._handle_event(kind, payload)
@@ -364,13 +370,16 @@ class HeartAppWindow(EditorialLayout, FramelessWindow):
 
     def _set_overlay_opacity(self, value: int) -> None:
         self._overlay.setWindowOpacity(value / 100)
+        self._room_overlay.setWindowOpacity(value / 100)
         self.store.set_setting("overlay_opacity", str(value))
 
     def _set_overlay_passthrough(self, enabled: bool) -> None:
         self._overlay.set_passthrough(enabled)
+        self._room_overlay.set_passthrough(enabled)
         self.store.set_setting("overlay_passthrough", "1" if enabled else "0")
 
     def _update_pc_reading(self) -> None:
+        self._publish_room_reading()
         fresh = (self._last_reading_clock is not None
                  and time.monotonic() - self._last_reading_clock <= 5
                  and self.engine.state == "connected")
@@ -691,6 +700,8 @@ class HeartAppWindow(EditorialLayout, FramelessWindow):
                 self._handle_event("shutdown_failed", {"message": str(exc)})
             return
         self._closed = True
+        self._room_client.leave()
+        self._room_overlay.close()
         self._overlay_hotkey.close()
         self._overlay.close()
         self._poll_timer.stop()

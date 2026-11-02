@@ -1,0 +1,9 @@
+# 转发镜像构建上下文只包含必要源码，排除个人数据、凭据及本机虚拟环境。
+**
+!heartapp/
+!heartapp/__init__.py
+!heartapp/relay.py
+!heartapp/room_protocol.py
+!server/
+!server/Dockerfile
+!server/requirements.txt

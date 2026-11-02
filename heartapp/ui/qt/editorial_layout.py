@@ -51,6 +51,9 @@ class EditorialLayout:
         self._stack.addWidget(self._build_live_page())
         self._stack.addWidget(self._build_history_page())
         self._stack.addWidget(self._build_overlay_page())
+        from .room_panel import RoomPanel
+        self._room_panel = RoomPanel(self)
+        self._stack.addWidget(self._room_panel)
         outer.addWidget(self._stack, 1)
         outer.addWidget(self._rule())
         foot = QHBoxLayout()
