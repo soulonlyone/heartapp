@@ -19,6 +19,16 @@ data/
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.csv
+.env
+.env.*
+!.env.example
+*.key
+*.pem
 
 # ---------------------------------------------------------------
 # 测试产物
