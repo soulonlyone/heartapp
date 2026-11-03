@@ -1,0 +1,91 @@
+# 持续集成：单元测试、后端冒烟、界面冒烟、联机冒烟
+#
+# 说明：
+# - 全部跑在 windows-latest：项目依赖 BLE（winrt）和 PySide6，Windows 是主平台。
+# - 不设 QT_QPA_PLATFORM=offscreen：界面冒烟会用 Win32 检查窗口可见性，
+#   离屏模式下窗口不是真实窗口，这类断言必然失败。GitHub 的 Windows runner
+#   有交互桌面，可以直接创建窗口。
+# - 只改文档时跳过，省额度。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: 单元测试 · Python ${{ matrix.python }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: 单元测试
+        run: python run_tests.py
+
+      - name: 后端全链路冒烟
+        run: python smoke_test.py
+
+  gui:
+    name: 界面与联机冒烟
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: unit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: 界面全流程冒烟
+        run: python tools/qt_smoke_test.py
+
+      - name: 服务端面板冒烟
+        run: python tools/server_panel_smoke_test.py
+
+      - name: 双客户端联机冒烟
+        run: python tools/room_smoke_test.py
+
+      - name: 上传冒烟截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: _test_output/
+          if-no-files-found: ignore
+          retention-days: 7
