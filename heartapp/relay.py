@@ -13,6 +13,7 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.http11 import Request, Response
 
 from .room_protocol import VERSION
+from . import __version__
 from .lobby import Relay
 
 
@@ -53,11 +54,21 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="HeartApp 自部署心率转发服务")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--max-clients", type=int, default=100)
-    parser.add_argument("--room-size", type=int, default=4)
+    parser = argparse.ArgumentParser(
+        description="HeartApp 自部署心率转发服务（不保存心率历史）",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=("示例：\n"
+                "  python -m heartapp.relay --host 127.0.0.1 --port 8765 --max-clients 20\n"
+                "  python -m heartapp.relay --host 0.0.0.0 --room-size 4\n\n"
+                "密码：优先使用环境变量 HEARTAPP_RELAY_PASSWORD，避免写入进程命令行。\n"
+                "验收：访问 http://127.0.0.1:8765/healthz；前台运行按 Ctrl+C 停止。\n"
+                "帮助不会启动服务。完整操作见 server/Linux说明.md、server/Docker说明.md。"),
+    )
+    parser.add_argument("--version", action="version", version=f"HeartApp relay {__version__} · protocol {VERSION}")
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址；局域网直连用 0.0.0.0（默认：%(default)s）")
+    parser.add_argument("--port", type=int, default=8765, help="监听端口（默认：%(default)s）")
+    parser.add_argument("--max-clients", type=int, default=100, help="总连接上限 1～10000；小型部署建议 20（默认：%(default)s）")
+    parser.add_argument("--room-size", type=int, default=4, help="每房间人数 1～4（默认：%(default)s）")
     parser.add_argument("--cert", help="TLS 证书文件")
     parser.add_argument("--key", help="TLS 私钥文件")
     parser.add_argument(

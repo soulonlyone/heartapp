@@ -3,8 +3,17 @@
 独立、可自部署的 WebSocket 转发服务，用来支持「联机房间」功能。
 不需要中央账号或公共服务器——所有参与者连接同一台你自己部署的服务端。
 
-**服务端不包含 GUI、BLE 和数据库**，只需要 Python 3.9+ 与 `websockets`。
+**无界面转发核心不包含 GUI、BLE 和数据库**，只需要 Python 3.9+ 与 `websockets`。
 它可以只部署 4 个文件运行，不需要在服务器上装 Qt。
+
+Windows 新增可视化控制面板，可启动/停止、设置密码、复制地址及收起到托盘。
+三端操作说明：[Windows 面板](Windows面板说明.md) · [Linux](Linux说明.md) · [Docker](Docker说明.md)。
+面板源码入口为根目录 `启动服务端面板.bat`，独立打包入口为 `tools/build_server_panel.py`。
+此面板及上一轮分发修复尚未替换旧版 Release 附件。
+
+Linux/Docker 独立说明已覆盖环境安装、首次部署、配置、验收、运维、升级回退和卸载。
+命令行帮助：`python -m heartapp.relay --help`、`bash server/install-linux.sh --help`；
+独立 Docker 压缩包解压后使用 `sh build_and_run.sh --help`。查看帮助不会启动或安装服务。
 
 ## 直接下载现成的包
 
@@ -140,6 +149,8 @@ powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Remove
 
 - 任务以 `SYSTEM` 运行，开机自动启动，失败自动重试 3 次
 - 启动脚本里可能含访问密码，已通过 `icacls` 限制为仅 SYSTEM / Administrators 可读
+- 启动器为带 UTF-8 BOM 的 `server/app/service-run.ps1`，支持中文密码和中文路径。
+  从旧版升级后需重新执行 `service-windows.ps1 -Install`，才能更新已注册任务的启动入口。
 - 客户端填写 `ws://这台电脑的IP:8765`
 
 ## 手动运行

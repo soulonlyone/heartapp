@@ -33,6 +33,7 @@ EXE_NAME = "HeartApp-Server.exe"
 
 #: 服务端只需要这些文件；不要牵进 Qt / BLE / 数据库。
 SERVER_FILES = ["__init__.py", "room_protocol.py", "relay.py", "lobby.py"]
+SERVER_GUIDES = ["Windows面板说明.md", "Linux说明.md", "Docker说明.md", "nginx.conf.example"]
 
 #: 服务端 exe 用不到的重量级模块，显式排掉以减小体积。
 EXCLUDES = [
@@ -114,6 +115,8 @@ def build_linux_tarball() -> Path:
         _add(tar, ROOT / "server" / "install-linux.sh", f"{prefix}/server/install-linux.sh", 0o755)
         _add(tar, ROOT / "server" / "README.md", f"{prefix}/server/README.md")
         _add(tar, ROOT / "server" / ".env.example", f"{prefix}/server/.env.example")
+        for name in SERVER_GUIDES:
+            _add(tar, ROOT / "server" / name, f"{prefix}/server/{name}")
     return target
 
 
@@ -129,17 +132,39 @@ def build_docker_tarball() -> Path:
         _add(tar, ROOT / "server" / "requirements.txt", f"{prefix}/server/requirements.txt")
         _add(tar, ROOT / "server" / "README.md", f"{prefix}/server/README.md")
 
+        for name in SERVER_GUIDES:
+            _add(tar, ROOT / "server" / name, f"{prefix}/server/{name}")
+
         dockerignore = ROOT / ".dockerignore"
         if dockerignore.exists():
             _add(tar, dockerignore, f"{prefix}/.dockerignore")
 
         helper = OUT / "build_and_run.sh"
-        helper.write_text(
+        helper.write_bytes((
             "#!/usr/bin/env sh\n"
             "# 在本目录执行：sh build_and_run.sh [访问密码]\n"
             "set -e\n"
+            'case "${1:-}" in\n'
+            "  -h|--help)\n"
+            "    cat <<'HELP'\n"
+            "HeartApp Docker 分发包启动器\n"
+            "用法：sh build_and_run.sh [访问密码]\n"
+            "      sh build_and_run.sh --help\n"
+            "建议通过环境变量 HEARTAPP_RELAY_PASSWORD 设置密码。\n"
+            "构建后替换同名容器 heartapp-server；绑定 127.0.0.1:8765。\n"
+            "资源限制：0.5 CPU / 384MiB；连接上限为核心默认 100，每房间 4 人。\n"
+            "查看日志：docker logs --tail=50 heartapp-server\n"
+            "停止服务：docker stop heartapp-server\n"
+            "恢复服务：docker start heartapp-server\n"
+            "完整配置与升级步骤见 server/Docker说明.md。\n"
+            "显示帮助不需要 Docker，也不会构建或替换容器。\n"
+            "HELP\n"
+            "    exit 0 ;;\n"
+            '  -*) echo "未知参数，请使用 --help；以 - 开头的密码请改用环境变量。" >&2; exit 2 ;;\n'
+            "esac\n"
+            '[ "$#" -le 1 ] || { echo "参数过多，请使用 --help。" >&2; exit 2; }\n'
             'PASSWORD="${1:-${HEARTAPP_RELAY_PASSWORD:-}}"\n'
-            "docker build -t heartapp-server .\n"
+            "docker build -f server/Dockerfile -t heartapp-server .\n"
             "docker rm -f heartapp-server >/dev/null 2>&1 || true\n"
             "docker run -d --name heartapp-server \\\n"
             "    -p 127.0.0.1:8765:8765 \\\n"
@@ -148,9 +173,8 @@ def build_docker_tarball() -> Path:
             "    --read-only --cap-drop ALL --security-opt no-new-privileges:true \\\n"
             '    --memory 384m --cpus 0.5 \\\n'
             "    heartapp-server\n"
-            'echo "已启动：curl http://127.0.0.1:8765/healthz"\n',
-            encoding="utf-8",
-        )
+            'echo "已启动：curl http://127.0.0.1:8765/healthz"\n'
+        ).encode("utf-8"))
         _add(tar, helper, f"{prefix}/build_and_run.sh", 0o755)
         helper.unlink()
     return target

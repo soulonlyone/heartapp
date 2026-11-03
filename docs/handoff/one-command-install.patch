@@ -1,0 +1,139 @@
+diff --git a/server/install-linux.sh b/server/install-linux.sh
+index 6c3aa3d..a86cd20 100644
+--- a/server/install-linux.sh
++++ b/server/install-linux.sh
+@@ -23,7 +23,7 @@ PORT=8765
+ MAX_CLIENTS=20
+ ROOM_SIZE=4
+ BIND_HOST=0.0.0.0
+-PASSWORD=""
++PASSWORD="${HEARTAPP_RELAY_PASSWORD:-}"
+ 
+ die() { echo "错误：$*" >&2; exit 1; }
+ log() { echo "[heartapp] $*"; }
+@@ -38,7 +38,7 @@ HeartApp Linux 服务端安装器（systemd）
+   --max-clients COUNT  总连接上限，默认 20
+   --room-size COUNT    每房间人数 1～4，默认 4
+   --user NAME          系统运行用户，默认 heartapp
+-  --password VALUE     服务器密码；也可安装后修改 /etc/heartapp-relay.env
++  --password VALUE     服务器密码；也可用 HEARTAPP_RELAY_PASSWORD 或安装后修改 env
+   -h, --help           显示帮助，不安装、不需要 root
+ 
+ 示例：sudo bash server/install-linux.sh --host 127.0.0.1 --max-clients 20
+diff --git a/server/setup-linux.sh b/server/setup-linux.sh
+new file mode 100644
+--- /dev/null
++++ b/server/setup-linux.sh
+@@ -0,0 +1,112 @@
++#!/usr/bin/env bash
++# 从刚拉取的源码自动准备依赖并安装；下载操作保持为当前用户，不在 sudo 下复用用户凭据。
++set -euo pipefail
++
++ENV_FILE=/etc/heartapp-relay.env
++UNIT_FILE=/etc/systemd/system/heartapp-relay.service
++SYSTEMD_DIR=/run/systemd/system
++SERVICE=heartapp-relay
++
++die() { echo "错误：$*" >&2; exit 1; }
++log() { echo "[heartapp] $*"; }
++usage() {
++    cat <<'HELP'
++HeartApp Linux 自动安装入口（从已拉取的源码执行）
++用法：sudo bash server/setup-linux.sh [安装参数]
++
++自动安装 Ubuntu/Debian 的 Python、venv 和 curl，注册 systemd 后台服务及开机启动。
++首次未指定密码时自动生成随机密码，安装成功后仅在终端显示。
++重复运行会保留已有 env 和单元文件，不覆盖密码，不自动升级已有服务。
++
++参数：--host ADDRESS、--port PORT、--max-clients COUNT、--room-size COUNT、
++      --user NAME、--password VALUE；默认 0.0.0.0:8765、20 连接、每房间 4 人。
++      -h / --help：显示帮助，不安装、不联网、不需要 root。
++
++完整安装/升级/回退步骤：server/Linux说明.md。
++一行下载命令见 server/一键安装说明.md；私有仓库需要当前用户已配置 GitHub 读取权限。
++HELP
++}
++
++INSTALL_ARGUMENTS=("$@")
++PASSWORD_GIVEN=0
++while [ $# -gt 0 ]; do
++    case "$1" in
++        -h|--help) usage; exit 0 ;;
++        --host|--port|--max-clients|--room-size|--user|--password)
++            [ $# -ge 2 ] || die "$1 缺少参数值（--help 查看用法）"
++            case "$1" in
++                --port|--max-clients|--room-size)
++                    [[ "$2" =~ ^[0-9]{1,5}$ ]] || die "$1 必须是有效整数"
++                    value=$((10#$2))
++                    case "$1" in
++                        --port) ((value >= 1 && value <= 65535)) || die "端口应为 1～65535" ;;
++                        --max-clients) ((value >= 1 && value <= 10000)) || die "连接上限应为 1～10000" ;;
++                        --room-size) ((value >= 1 && value <= 4)) || die "房间人数应为 1～4" ;;
++                    esac ;;
++                --host) [[ "$2" =~ ^[a-zA-Z0-9:.%-]+$ ]] || die "监听地址格式无效" ;;
++                --user) [[ "$2" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "系统用户名格式无效" ;;
++                --password)
++                    [[ "$2" =~ ^[a-zA-Z0-9_-]{1,256}$ ]] || die "自动安装密码请用 1～256 位字母、数字、下划线或短横线"
++                    PASSWORD_GIVEN=1 ;;
++            esac
++            shift 2 ;;
++        *) die "未知参数 $1（--help 查看用法）" ;;
++    esac
++done
++
++[ "$(id -u)" -eq 0 ] || die "请使用 sudo 执行自动安装入口"
++command -v systemctl >/dev/null 2>&1 && [ -d "$SYSTEMD_DIR" ] \
++    || die "此入口需要正在运行 systemd 的 Linux 主机；容器环境请使用 Docker 方案"
++
++SRC_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++for file in heartapp/__init__.py heartapp/relay.py heartapp/lobby.py heartapp/room_protocol.py server/requirements.txt server/install-linux.sh; do
++    [ -f "$SRC_ROOT/$file" ] || die "源码不完整：缺少 $file；未开始安装"
++done
++
++# 任一正式配置已存在都不自动覆盖，避免把旧密码或监听范围重置成默认值。
++if [ -e "$ENV_FILE" ] || [ -e "$UNIT_FILE" ]; then
++    log "检测到已有安装，密码和配置保持不变，本次未安装或升级。"
++    log "配置：$ENV_FILE；服务单元：$UNIT_FILE"
++    if systemctl is-active --quiet "$SERVICE"; then
++        log "原服务正在运行。升级请按 Linux说明.md 的备份和更新步骤操作。"
++    else
++        log "原服务未运行或安装未完成。请先查看 systemctl status $SERVICE 和服务日志。"
++    fi
++    exit 0
++fi
++
++if command -v apt-get >/dev/null 2>&1; then
++    log "准备系统依赖：Python 3、venv、curl、CA 证书"
++    apt-get update
++    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv curl ca-certificates
++else
++    log "非 apt 系统，沿用现有 Python/venv/curl；缺少依赖时安装器会报告错误。"
++fi
++
++PY=""
++for candidate in python3 python3.12 python3.11 python3.10 python3.9; do
++    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3,9) else 1)' 2>/dev/null; then
++        PY="$candidate"
++        break
++    fi
++done
++[ -n "$PY" ] || die "找不到 Python 3.9+，未安装服务"
++"$PY" -c 'import venv, ensurepip' || die "缺少 Python venv/ensurepip，请安装对应发行版依赖"
++
++GENERATED_PASSWORD=""
++if [ "$PASSWORD_GIVEN" -eq 0 ]; then
++    if [ -n "${HEARTAPP_RELAY_PASSWORD:-}" ]; then
++        [[ "$HEARTAPP_RELAY_PASSWORD" =~ ^[a-zA-Z0-9_-]{1,256}$ ]] || die "环境变量密码请使用字母、数字、下划线或短横线"
++    else
++        GENERATED_PASSWORD="$("$PY" -c 'import secrets; print(secrets.token_hex(16))')"
++        export HEARTAPP_RELAY_PASSWORD="$GENERATED_PASSWORD"
++    fi
++fi
++
++log "安装后台服务；不会修改防火墙、安全组或已有 Docker/agent 配置。"
++bash "$SRC_ROOT/server/install-linux.sh" "${INSTALL_ARGUMENTS[@]}"
++if [ -n "$GENERATED_PASSWORD" ]; then
++    printf '\n首次安装访问密码：%s\n' "$GENERATED_PASSWORD"
++    echo "请自行保存，不要公开完整安装输出。密码配置权限为 600。"
++fi
++log "本机服务安装完成。朋友访问还需确认实际 IP、网络及端口放行；公网推荐 WSS。"
