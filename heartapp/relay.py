@@ -36,7 +36,7 @@ async def run(args: argparse.Namespace) -> None:
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.load_cert_chain(args.cert, args.key)
     relay = Relay(max_clients=args.max_clients, room_size=args.room_size,
-                  password=os.environ.get("HEARTAPP_RELAY_PASSWORD", ""))
+                  password=args.password or os.environ.get("HEARTAPP_RELAY_PASSWORD", ""))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     if os.name != "nt":
@@ -60,6 +60,11 @@ def main() -> None:
     parser.add_argument("--room-size", type=int, default=4)
     parser.add_argument("--cert", help="TLS 证书文件")
     parser.add_argument("--key", help="TLS 私钥文件")
+    parser.add_argument(
+        "--password",
+        help="访问密码；也可用环境变量 HEARTAPP_RELAY_PASSWORD。"
+             "长期运行的服务建议用环境变量，避免密码出现在进程命令行里",
+    )
     args = parser.parse_args()
     if not 1 <= args.room_size <= 4 or not 1 <= args.max_clients <= 10000:
         parser.error("房间人数应为 1～4，总连接上限应为 1～10000")

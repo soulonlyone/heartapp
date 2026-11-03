@@ -1,0 +1,25 @@
+feat(server): 增加可下载的服务端分发包（Windows exe / Linux tar / Docker 包）
+
+之前只有仓库里的部署脚本，用户还得先克隆仓库、装 Python。
+现在 tools/build_relay.py 一次产出三个可直接分发的文件：
+
+- HeartApp-Relay-<版本>-win64.exe
+  PyInstaller 打的独立服务端，不需要 Python 环境，直接跑
+- HeartApp-Relay-<版本>-linux.tar.gz
+  只含服务端 4 个文件 + requirements + install-linux.sh，解压即可装
+- HeartApp-Relay-<版本>-docker.tar.gz
+  Docker 构建上下文 + build_and_run.sh，不用克隆仓库
+
+配套改动：
+- relay.py 增加 --password（也可继续用 HEARTAPP_RELAY_PASSWORD 环境变量；
+  长期运行的服务建议用环境变量，密码不会出现在进程命令行里）
+- packaging/relay_entry.py 服务端独立入口
+- server/README.md 顶部加「直接下载现成的包」，说明三种包的用法
+
+实测（Windows exe）：
+- 启动后 GET /healthz 返回 HeartApp relay v2 OK
+- 错误密码被拒（error / 服务器访问密码错误）
+- 正确密码登录成功（login_ok + self_id）
+- 签名 Valid
+
+Linux 脚本与 Docker 镜像仍未在真机验证。
