@@ -162,6 +162,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意
 - **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
   截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
+- **发布用 `tools/build_release.py`**：一个版本一个 Release，客户端（4 个）+ 服务端（3 个）
+  + 服务端面板放在一起；签名必须在压缩之前
 - PyInstaller `--exclude-module`：GUI 版排除 `tkinter`（已无代码引用，只为瘦身）；
   CLI 版还要排除 `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
 
