@@ -28,7 +28,7 @@ try:
 except Exception:
     pass
 
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "_qt_shot.png"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "_test_output" / "qt_smoke.png"
 DB_PATH = ROOT / "_test_output" / "qt_smoke.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 for suffix in ("", "-wal", "-shm"):
