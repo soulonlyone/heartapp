@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 APP_NAME = "心率记录仪"
 APP_NAME_EN = "HeartApp"
 
