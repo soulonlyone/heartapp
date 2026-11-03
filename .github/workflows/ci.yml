@@ -29,6 +29,9 @@ jobs:
     name: 单元测试 · Python ${{ matrix.python }}
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      # runner 控制台默认不是 UTF-8，脚本打印中文会 UnicodeEncodeError
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +61,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     needs: unit
+    env:
+      PYTHONUTF8: "1"
 
     steps:
       - uses: actions/checkout@v4

@@ -55,6 +55,18 @@ from .editorial import (
 )
 from .editorial_layout import EditorialLayout
 from .chrome import FramelessWindow
+
+def _default_session_note(moment: "datetime | None" = None) -> str:
+    """默认会话标题。
+
+    不要把中文放进 strftime 的格式串：Windows 上 strftime 会用系统 ANSI 代码页
+    编码整个格式串，英文（cp1252）等区域的机器会直接抛 UnicodeEncodeError，
+    表现为一点「开始记录」就崩溃。这里用纯 ASCII 格式串再拼接。
+    """
+    now = moment or datetime.now()
+    return "游戏记录 %02d-%02d %02d:%02d" % (now.month, now.day, now.hour, now.minute)
+
+
 from .room_panel import RoomActions, RoomOverlay
 
 #: 实时趋势图显示最近多少秒
@@ -266,7 +278,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
                 self._connect_btn.set_text("连接")
             if state == "connected" and self._pending_autorecord:
                 self._pending_autorecord = False
-                self.engine.start_pc_recording(datetime.now().strftime("游戏记录 %m-%d %H:%M"), "游戏")
+                self.engine.start_pc_recording(_default_session_note(), "游戏")
 
         elif kind == "sample":
             sample = payload.get("sample")
@@ -443,7 +455,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             self._status_label.setText("请先连接手表，或在连接面板选择模拟演示。")
             self._show_connection()
             return
-        self.engine.start_pc_recording(datetime.now().strftime("游戏记录 %m-%d %H:%M"), "游戏")
+        self.engine.start_pc_recording(_default_session_note(), "游戏")
 
     def on_export_current(self, *, directory: Optional[Path] = None) -> None:
         if self._session_id is None and self._last_session_id is None:
