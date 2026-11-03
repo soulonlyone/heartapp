@@ -125,7 +125,8 @@ class TestRecording(EngineTestCase):
     def test_full_record_cycle(self):
         # 正常生命周期使用确定性输入；随机丢帧会令首批不足 5 条，第二批晚于测试截止。
         # 丢帧及断流保存由独立回归测试覆盖。
-        source = SimulatedHeartRateSource("workout", seed=0, dropout_rate=0)
+        # 采样间隔调小：落库要攒够条数或等定时 flush，慢机器上 1 秒一帧会顶到超时。
+        source = SimulatedHeartRateSource("workout", interval=0.05, seed=0, dropout_rate=0)
         with patch("heartapp.simulator.SimulatedHeartRateSource", return_value=source):
             self.engine.connect_simulator("workout")
         self.assertTrue(self.engine.wait_for_state(("connected",), timeout=5.0))
@@ -133,7 +134,7 @@ class TestRecording(EngineTestCase):
         self.assertIsNotNone(session_id)
 
         self.assertTrue(
-            wait_until(lambda: self.store.sample_count(session_id) >= 5, timeout=10.0),
+            wait_until(lambda: self.store.sample_count(session_id) >= 5, timeout=20.0),
             "记录期间没有数据落库",
         )
 

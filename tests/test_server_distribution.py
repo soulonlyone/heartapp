@@ -163,6 +163,11 @@ class TestWindowsServiceLauncher(unittest.TestCase):
                     self.assertEqual(executed.returncode, 7, executed.stderr.decode(errors="replace"))
                     result = json.loads(output.read_text(encoding="utf-8"))
                     self.assertEqual(result["password"], password or "inherited-password")
-                    self.assertEqual(Path(result["cwd"]), app)
+                    # 临时目录在部分 Windows 环境是 8.3 短名（RUNNER~1），直接比较 Path 不等；
+                    # 两边都解析成真实长路径再比。
+                    self.assertEqual(
+                        Path(os.path.realpath(result["cwd"])),
+                        Path(os.path.realpath(app)),
+                    )
                     self.assertEqual(result["args"], ["--host", "0.0.0.0", "--port", "9000",
                                                      "--max-clients", "20", "--room-size", "4"])
