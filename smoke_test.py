@@ -82,10 +82,13 @@ try:
     problems = []
     if samples_seen < 8:
         problems.append(f"收到的采样太少: {samples_seen}")
-    # 接口事件是异步投递的，可能有 1-2 条在轮询循环结束后、停止记录前到达，
-    # 因此只要求「落库不少于观察到的」，且不能多出一个不合理的量。
-    if db_count < samples_seen:
-        problems.append(f"落库条数 {db_count} 少于收到采样数 {samples_seen}（丢数据）")
+    # 事件队列与落库不是原子的：轮询到的最后 1-2 条可能正好卡在「停止记录」边界
+    # （已作为事件发出、但停止后不再接受新样本），因此允许 2 条边界差。
+    if db_count < samples_seen - 2:
+        problems.append(f"落库条数 {db_count} 明显少于收到采样数 {samples_seen}（丢数据）")
+    # 会话自报的统计必须与实际落库严格一致。
+    if stats.sample_count != db_count:
+        problems.append(f"会话统计样本数 {stats.sample_count} 与落库条数 {db_count} 不一致")
     if db_count > samples_seen + 3:
         problems.append(f"落库条数 {db_count} 明显多于收到采样数 {samples_seen}")
     if not stats.avg_bpm or not (50 < stats.avg_bpm < 200):
