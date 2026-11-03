@@ -117,7 +117,7 @@ python -m venv .venv
 |---|---|
 | [使用指南](docs/使用指南.md) | 界面说明、回看操作、数据格式、命令行、完整 FAQ |
 | [开发与打包](docs/开发与打包.md) | 项目结构、测试、打包、代码签名 |
-| [服务端部署](server/README.md) | 联机服务器的部署与访问边界 |
+| [服务端部署](server/README.md) | 联机服务器：Docker / Linux / Windows 三种部署方式 |
 | [设计说明](docs/pc-monitor-design.md) | 产品方向与架构决策 |
 | [AGENTS.md](AGENTS.md) | 给 AI 协作者的开发约定与踩坑记录 |
 
