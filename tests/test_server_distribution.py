@@ -43,7 +43,7 @@ class TestDockerDistribution(unittest.TestCase):
                     target.write_bytes(source.read())
         self.package = next(self.folder.glob("heartapp-server-*"))
 
-    def run_helper(self, fail_build=False):
+    def run_helper(self, fail_build=False, arguments=()):
         if not SH or not Path(SH).exists():
             self.skipTest("需要 POSIX sh（Windows 可使用 Git 自带的 sh）")
         executable = self.package / "docker"
@@ -57,10 +57,11 @@ class TestDockerDistribution(unittest.TestCase):
         executable.chmod(0o755)
         env = dict(os.environ, FAIL_BUILD="1" if fail_build else "0")
         # POSIX 的相对 PATH 同时适用于原生 sh 和 Git for Windows sh。
-        env["PATH"] = "." + (";" if os.name == "nt" else ":") + env.get("PATH", "")
-        result = subprocess.run([SH, "build_and_run.sh"], cwd=self.package,
+        env["PATH"] = os.pathsep.join((".", str(Path(SH).parent), env.get("PATH", "")))
+        result = subprocess.run([SH, "build_and_run.sh", *arguments], cwd=self.package,
                                 env=env, capture_output=True, timeout=20)
-        return result, (self.package / "calls.txt").read_text(encoding="utf-8").splitlines()
+        calls = self.package / "calls.txt"
+        return result, calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
 
     def test_generated_archive_runs_with_correct_dockerfile_and_lf(self):
         helper = (self.package / "build_and_run.sh").read_bytes()
@@ -75,6 +76,44 @@ class TestDockerDistribution(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0].startswith("build "))
+
+    def test_help_does_not_build_or_replace_container(self):
+        result, calls = self.run_helper(arguments=("--help",))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("HEARTAPP_RELAY_PASSWORD", result.stdout.decode("utf-8"))
+        self.assertEqual(calls, [])
+
+
+class TestDeploymentHelp(unittest.TestCase):
+    def run_installer(self, *arguments):
+        bash = str(Path(SH).with_name("bash.exe")) if os.name == "nt" and SH else shutil.which("bash")
+        if not bash or not Path(bash).exists():
+            self.skipTest("需要 Bash")
+        env = dict(os.environ)
+        env["PATH"] = str(Path(bash).parent) + os.pathsep + env.get("PATH", "")
+        return subprocess.run([bash, "server/install-linux.sh", *arguments], cwd=ROOT,
+                              env=env, capture_output=True, timeout=10)
+
+    def test_installer_help_lists_parameters_without_root(self):
+        result = self.run_installer("--help")
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        for argument in ("--host", "--port", "--max-clients", "--room-size", "--user", "--password"):
+            self.assertIn(argument, result.stdout.decode("utf-8"))
+
+    def test_installer_missing_value_or_unknown_option_fails_before_install(self):
+        for argument in ("--port", "--unknown"):
+            result = self.run_installer(argument)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--help", result.stderr.decode("utf-8"))
+
+    def test_relay_help_and_version_exit_without_starting(self):
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        for argument in ("--help", "--version"):
+            result = subprocess.run([sys.executable, "-m", "heartapp.relay", argument],
+                                    cwd=ROOT, env=env, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+            output = result.stdout.decode("utf-8")
+            self.assertIn("HEARTAPP_RELAY_PASSWORD" if argument == "--help" else "protocol 2", output)
 
 
 @unittest.skipUnless(os.name == "nt" and POWERSHELL, "需要 Windows PowerShell")

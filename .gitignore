@@ -71,4 +71,6 @@ _old_shot.png
 # 服务端安装产物（由 install-*.bat / install-*.sh 生成，不入库）
 server/.venv/
 server/app/
+_deploy-backup/
+server/compose.rollback.yaml
 server/.env

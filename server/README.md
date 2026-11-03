@@ -11,6 +11,10 @@ Windows 新增可视化控制面板，可启动/停止、设置密码、复制�
 面板源码入口为根目录 `启动服务端面板.bat`，独立打包入口为 `tools/build_server_panel.py`。
 此面板及上一轮分发修复尚未替换旧版 Release 附件。
 
+Linux/Docker 独立说明已覆盖环境安装、首次部署、配置、验收、运维、升级回退和卸载。
+命令行帮助：`python -m heartapp.relay --help`、`bash server/install-linux.sh --help`；
+独立 Docker 压缩包解压后使用 `sh build_and_run.sh --help`。查看帮助不会启动或安装服务。
+
 ## 直接下载现成的包
 
 不想克隆仓库？到 [Server v1.2.0 发布页](https://github.com/soulonlyone/heartapp/releases/tag/server-v1.2.0) 下载：

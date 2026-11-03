@@ -28,7 +28,32 @@ PASSWORD=""
 die() { echo "错误：$*" >&2; exit 1; }
 log() { echo "[heartapp] $*"; }
 
+usage() {
+    cat <<'HELP'
+HeartApp Linux 服务端安装器（systemd）
+用法：sudo bash server/install-linux.sh [参数]
+
+  --host ADDRESS       监听地址，默认 0.0.0.0；反向代理建议 127.0.0.1
+  --port PORT          服务端口，默认 8765
+  --max-clients COUNT  总连接上限，默认 20
+  --room-size COUNT    每房间人数 1～4，默认 4
+  --user NAME          系统运行用户，默认 heartapp
+  --password VALUE     服务器密码；也可安装后修改 /etc/heartapp-relay.env
+  -h, --help           显示帮助，不安装、不需要 root
+
+示例：sudo bash server/install-linux.sh --host 127.0.0.1 --max-clients 20
+安装到 /opt/heartapp-relay，注册 heartapp-relay 服务并开机启动。
+重新执行会覆盖 env 和单元文件；升级前备份配置。重启服务会清空临时房间。
+运维：systemctl status heartapp-relay；journalctl -u heartapp-relay -n 50
+说明：server/Linux说明.md。该帮助不会安装系统依赖，需预先准备 Python 3.9+ 和 venv。
+HELP
+}
+
 while [ $# -gt 0 ]; do
+    case "$1" in
+        --port|--max-clients|--room-size|--host|--password|--user)
+            [ $# -ge 2 ] || die "$1 缺少参数值（--help 查看用法）" ;;
+    esac
     case "$1" in
         --port)         PORT="$2"; shift 2 ;;
         --max-clients)  MAX_CLIENTS="$2"; shift 2 ;;
@@ -37,7 +62,7 @@ while [ $# -gt 0 ]; do
         --password)     PASSWORD="$2"; shift 2 ;;
         --user)         RUN_USER="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+            usage
             exit 0 ;;
         *) die "未知参数 $1（--help 查看用法）" ;;
     esac

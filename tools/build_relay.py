@@ -144,6 +144,25 @@ def build_docker_tarball() -> Path:
             "#!/usr/bin/env sh\n"
             "# 在本目录执行：sh build_and_run.sh [访问密码]\n"
             "set -e\n"
+            'case "${1:-}" in\n'
+            "  -h|--help)\n"
+            "    cat <<'HELP'\n"
+            "HeartApp Docker 分发包启动器\n"
+            "用法：sh build_and_run.sh [访问密码]\n"
+            "      sh build_and_run.sh --help\n"
+            "建议通过环境变量 HEARTAPP_RELAY_PASSWORD 设置密码。\n"
+            "构建后替换同名容器 heartapp-server；绑定 127.0.0.1:8765。\n"
+            "资源限制：0.5 CPU / 384MiB；连接上限为核心默认 100，每房间 4 人。\n"
+            "查看日志：docker logs --tail=50 heartapp-server\n"
+            "停止服务：docker stop heartapp-server\n"
+            "恢复服务：docker start heartapp-server\n"
+            "完整配置与升级步骤见 server/Docker说明.md。\n"
+            "显示帮助不需要 Docker，也不会构建或替换容器。\n"
+            "HELP\n"
+            "    exit 0 ;;\n"
+            '  -*) echo "未知参数，请使用 --help；以 - 开头的密码请改用环境变量。" >&2; exit 2 ;;\n'
+            "esac\n"
+            '[ "$#" -le 1 ] || { echo "参数过多，请使用 --help。" >&2; exit 2; }\n'
             'PASSWORD="${1:-${HEARTAPP_RELAY_PASSWORD:-}}"\n'
             "docker build -f server/Dockerfile -t heartapp-server .\n"
             "docker rm -f heartapp-server >/dev/null 2>&1 || true\n"
