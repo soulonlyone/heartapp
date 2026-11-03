@@ -7,6 +7,37 @@
 下面以 Ubuntu/Debian VPS 为例；已有 Docker 和 agent 容器的机器跳过引擎安装，
 不要为了本项目重装 Docker 或删除其他容器。
 
+## 一行部署（Linux）
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
+```
+
+等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
+最终把代码装到 `/opt/heartapp-relay` 并注册 systemd 服务 `heartapp-relay`。
+参数会原样转发给安装脚本：
+
+```sh
+# 指定端口与连接上限
+curl -fsSL .../server/deploy.sh | sudo bash -s -- --password '口令' --port 9000 --max-clients 50
+
+# 固定版本
+... | sudo bash -s -- --password '口令' --version v1.2.0
+
+# 只看它会做什么，不真装
+... | sudo bash -s -- --dry-run --password '口令'
+```
+
+不放心管道安装，可以先下载检查：
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
+less deploy.sh
+sudo bash deploy.sh --password '你的口令'
+```
+
+服务默认只监听本机 `127.0.0.1:8765`，公网请在前面加 HTTPS / WSS 反向代理。
+
 ## 1. 连接服务器、检查 Docker
 
 从自己的电脑连接服务器，之后命令均在服务器执行：

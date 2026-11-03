@@ -1,11 +1,12 @@
 # HeartApp · PC 心率监控
 
 在 Windows 上观察**游戏、工作时的真实心率**。从支持标准 BLE 心率服务的智能手表读取，
-本地记录与回看；也可以自部署服务器，和朋友实时对比。
+本地记录与回看；也可以自建服务器，和朋友在同一张图上实时对比。
 
-![平台](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)
-![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![Release](https://img.shields.io/github/v/release/soulonlyone/heartapp?label=release)
+[![平台](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)](#)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](#)
+[![Release](https://img.shields.io/github/v/release/soulonlyone/heartapp?label=release)](https://github.com/soulonlyone/heartapp/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 > **只描述观察值。** 不把心率升高解释成紧张、压力或兴奋——那需要更多上下文，程序不替你判断。
 
@@ -13,14 +14,22 @@
 
 ## 这是什么
 
+一个**围绕"一次 PC 使用过程"**组织的记录工具：
+
 | 概念 | 说明 |
 |---|---|
 | **会话** | 点「开始记录」到「停止记录」之间的一次过程，自动存进本机数据库 |
 | **小窗** | 置顶浮窗，玩游戏时**不用切出来**就能看当前心率和短时曲线 |
-| **回看** | 事后看整段曲线，滚轮缩放、拖动平移、悬停读数 |
-| **联机** | 自部署服务器，最多 4 人在同一张图上对比（共享默认关闭） |
+| **回看** | 事后看整段曲线：滚轮缩放、拖动平移、悬停读数 |
+| **联机** | 自建服务器，最多 4 人在同一张图上对比（共享默认关闭） |
 
-记录过程中**不需要任何操作**——不用手动打点，也不解释心率代表什么情绪。
+记录过程中**不需要任何操作**——不用手动打点，也不替你解释心率代表什么情绪。
+
+### 它不做什么
+
+- **不读游戏数据**：不读内存、不注入、不采集输入、不识别游戏画面
+- **不上传**：本地历史只在本机；联机时只有你主动开启共享才发送实时读数
+- **不评分、不打分不贴标签**：没有"压力值"、没有情绪推断、没有压力排行榜
 
 **设备要求**：支持标准 **Heart Rate Service（`0x180D`）** 并广播心率。
 OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑定品牌。
@@ -33,7 +42,7 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑
 `HeartApp-<版本>-win64.exe`（单文件，双击即用）。
 
 > 放在**可写目录**（桌面、文档、U 盘），不要放 `C:\Program Files`，也不要「以管理员身份运行」。
-> 首次运行 SmartScreen 可能提示，点「更多信息」→「仍要运行」。
+> 首次运行 SmartScreen 可能提示，点「更多信息」→「仍要运行」（自签名证书，见 [签名说明](docs/签名说明.md)）。
 
 ### 2 · 打开手表的心率广播
 
@@ -43,9 +52,9 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑
 - 部分版本要先**开始一个运动**，运动界面里才有入口
 - 也有版本放在下拉控制中心
 
-找不到就直接点「扫描设备」，广播一开，列表里就会出现带 **♥** 的手表。
+找不到就直接点「扫描设备」——广播一开，列表里就会出现带 **♥** 的手表。
 
-> 手表同时只允许一个蓝牙连接。还连着手机的话，先断开手机再扫。
+> 手表通常只允许一个蓝牙连接。还连着手机的话，先断开手机再扫。
 
 ### 3 · 连接并记录
 
@@ -75,10 +84,28 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑
 - 队友曲线**只在内存保留最多 30 分钟**，退出房间立即清空，**不写进你的数据库**
 - 服务端**不保存心率历史**；密码与会话令牌不落盘，重启软件重新登录
 
-服务器需要自己部署，见 [服务端说明](server/README.md)。
-想先看效果：双击 `tools/bat/联机本机演示.bat`，会起本地服务和两个模拟玩家。
-
 ![联机房间](docs/images/screenshot-lobby.png)
+
+## 自建服务端
+
+联机功能需要一个转发服务，**自己部署**，没有公共服务器。三种方式任选：
+
+**Linux 一行安装（systemd）**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
+  | sudo bash -s -- --password '你的口令'
+```
+
+装到 `/opt/heartapp-relay` 并注册 `heartapp-relay` 服务。参数原样转发（`--port` / `--max-clients` / `--dry-run` 等）。
+
+**Windows 可视化面板**：下载服务端包里的 `HeartApp-Server-Panel`，双击即用，可启停、设密码、复制地址、收进托盘。
+
+**Docker**：`server/` 下有 Dockerfile、compose 和 nginx 示例。
+
+服务端只需要 Python 3.9+ 和 `websockets`，**不含 Qt / BLE / 数据库**，也不存任何心率历史。
+
+完整说明见 [服务端文档](server/README.md)。
 
 ## 数据在哪
 
@@ -109,24 +136,29 @@ python -m venv .venv
 .venv\Scripts\python.exe -m heartapp
 ```
 
-测试、打包、签名见 [开发与打包](docs/开发与打包.md)。
+测试、打包、发布流程见 [开发与打包](docs/开发与打包.md)。
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
 | [使用指南](docs/使用指南.md) | 界面说明、回看操作、数据格式、命令行、完整 FAQ |
-| [开发与打包](docs/开发与打包.md) | 项目结构、测试、打包、代码签名 |
-| [服务端部署](server/README.md) | 联机服务器：Docker / Linux / Windows 三种部署方式 |
+| [开发与打包](docs/开发与打包.md) | 项目结构、测试、打包、发布、代码签名 |
+| [服务端文档](server/README.md) | 部署方式、访问边界、排障 |
 | [Windows 服务端面板](server/Windows面板说明.md) | 可视化开服、密码和地址、托盘运行 |
-| [Linux 操作说明](server/Linux说明.md) / [Docker 操作说明](server/Docker说明.md) | 服务器配置、运行维护与升级 |
+| [Linux 操作说明](server/Linux说明.md) / [Docker 操作说明](server/Docker说明.md) | 服务器配置、运行维护、升级回退 |
 | [设计说明](docs/pc-monitor-design.md) | 产品方向与架构决策 |
 | [AGENTS.md](AGENTS.md) | 给 AI 协作者的开发约定与踩坑记录 |
 
 ## 已知限制
 
-- **广播心率每秒 1 次，不是逐拍**。平均/最高/最低可靠；HRV 只能当参考
+- **广播心率每秒 1 次，不是逐拍**。平均 / 最高 / 最低可靠；HRV 只能当参考
 - **只支持标准 BLE 心率服务**，厂商私有协议读不到
 - **独占全屏会遮挡小窗**，快捷键也可能被游戏占用
 - **自签名证书只在本机有效**，换台电脑仍显示未知发布者
-- **公网部署尚未验证**（WSS / 证书 / 反向代理），局域网和本机没问题
+- **公网 WSS / 反向代理尚未验证**，局域网和本机没问题
+- **未做各游戏的反作弊兼容认证**（软件本身不注入、不读内存、不采集输入）
+
+## 许可
+
+[MIT](LICENSE)。自用、修改、商用、分发都可以，保留版权声明即可。

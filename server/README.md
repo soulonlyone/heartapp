@@ -15,21 +15,52 @@ Linux/Docker 独立说明已覆盖环境安装、首次部署、配置、验收�
 命令行帮助：`python -m heartapp.relay --help`、`bash server/install-linux.sh --help`；
 独立 Docker 压缩包解压后使用 `sh build_and_run.sh --help`。查看帮助不会启动或安装服务。
 
+## 一行部署（Linux）
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
+```
+
+等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
+最终把代码装到 `/opt/heartapp-relay` 并注册 systemd 服务 `heartapp-relay`。
+参数会原样转发给安装脚本：
+
+```sh
+# 指定端口与连接上限
+curl -fsSL .../server/deploy.sh | sudo bash -s -- --password '口令' --port 9000 --max-clients 50
+
+# 固定版本
+... | sudo bash -s -- --password '口令' --version v1.2.0
+
+# 只看它会做什么，不真装
+... | sudo bash -s -- --dry-run --password '口令'
+```
+
+不放心管道安装，可以先下载检查：
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
+less deploy.sh
+sudo bash deploy.sh --password '你的口令'
+```
+
+服务默认只监听本机 `127.0.0.1:8765`，公网请在前面加 HTTPS / WSS 反向代理。
+
 ## 直接下载现成的包
 
-不想克隆仓库？到 [Server v1.2.0 发布页](https://github.com/soulonlyone/heartapp/releases/tag/server-v1.2.0) 下载：
+不想克隆仓库？到 [最新发布页](https://github.com/soulonlyone/heartapp/releases/latest) 下载（客户端与服务端在同一个 Release）：
 
 | 文件 | 用途 |
 |---|---|
-| `HeartApp-Server-v1.2.0-win64.exe` | **Windows 独立服务端，不需要装 Python**，直接跑 |
-| `HeartApp-Server-v1.2.0-linux.tar.gz` | Linux 源码包，解压后 `sudo bash server/install-linux.sh` |
-| `HeartApp-Server-v1.2.0-docker.tar.gz` | Docker 构建包，解压后 `sh build_and_run.sh` |
+| `HeartApp-Server-v<版本>-win64.exe` | **Windows 独立服务端，不需要装 Python**，直接跑 |
+| `HeartApp-Server-v<版本>-linux.tar.gz` | Linux 源码包，解压后 `sudo bash server/install-linux.sh` |
+| `HeartApp-Server-v<版本>-docker.tar.gz` | Docker 构建包，解压后 `sh build_and_run.sh` |
 | `SHA256SUMS.txt` | 三个文件的 SHA256 校验和 |
 
 Windows exe 直接在命令行跑：
 
 ```bat
-HeartApp-Server-v1.2.0-win64.exe --host 0.0.0.0 --port 8765 --password 你的口令
+HeartApp-Server-v<版本>-win64.exe --host 0.0.0.0 --port 8765 --password 你的口令
 ```
 
 首次运行可能弹 SmartScreen，点「更多信息」→「仍要运行」（自签名证书，见[签名说明](../docs/签名说明.md)）。
