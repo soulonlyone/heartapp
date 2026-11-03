@@ -6,6 +6,7 @@
 [![平台](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue)](#)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](#)
 [![Release](https://img.shields.io/github/v/release/soulonlyone/heartapp?label=release)](https://github.com/soulonlyone/heartapp/releases/latest)
+[![CI](https://github.com/soulonlyone/heartapp/actions/workflows/ci.yml/badge.svg)](https://github.com/soulonlyone/heartapp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 > **只描述观察值。** 不把心率升高解释成紧张、压力或兴奋——那需要更多上下文，程序不替你判断。

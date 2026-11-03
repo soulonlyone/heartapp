@@ -38,9 +38,9 @@ jobs:
         python: ["3.9", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -65,9 +65,9 @@ jobs:
       PYTHONUTF8: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.9"
           cache: pip
@@ -88,7 +88,7 @@ jobs:
 
       - name: 上传冒烟截图
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: smoke-screenshots
           path: _test_output/
