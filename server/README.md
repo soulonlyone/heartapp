@@ -8,19 +8,19 @@
 
 ## 直接下载现成的包
 
-不想克隆仓库？到 [Relay v1.2.0 发布页](https://github.com/soulonlyone/heartapp/releases/tag/relay-v1.2.0) 下载：
+不想克隆仓库？到 [Server v1.2.0 发布页](https://github.com/soulonlyone/heartapp/releases/tag/server-v1.2.0) 下载：
 
 | 文件 | 用途 |
 |---|---|
-| `HeartApp-Relay-v1.2.0-win64.exe` | **Windows 独立服务端，不需要装 Python**，直接跑 |
-| `HeartApp-Relay-v1.2.0-linux.tar.gz` | Linux 源码包，解压后 `sudo bash server/install-linux.sh` |
-| `HeartApp-Relay-v1.2.0-docker.tar.gz` | Docker 构建包，解压后 `sh build_and_run.sh` |
+| `HeartApp-Server-v1.2.0-win64.exe` | **Windows 独立服务端，不需要装 Python**，直接跑 |
+| `HeartApp-Server-v1.2.0-linux.tar.gz` | Linux 源码包，解压后 `sudo bash server/install-linux.sh` |
+| `HeartApp-Server-v1.2.0-docker.tar.gz` | Docker 构建包，解压后 `sh build_and_run.sh` |
 | `SHA256SUMS.txt` | 三个文件的 SHA256 校验和 |
 
 Windows exe 直接在命令行跑：
 
 ```bat
-HeartApp-Relay-v1.2.0-win64.exe --host 0.0.0.0 --port 8765 --password 你的口令
+HeartApp-Server-v1.2.0-win64.exe --host 0.0.0.0 --port 8765 --password 你的口令
 ```
 
 首次运行可能弹 SmartScreen，点「更多信息」→「仍要运行」（自签名证书，见[签名说明](../docs/签名说明.md)）。

@@ -2,9 +2,9 @@
 
 产出三个可直接分发的文件（dist/relay/）：
 
-    HeartApp-Relay-<版本>-win64.exe            Windows 独立服务端，不需要装 Python
-    HeartApp-Relay-<版本>-linux.tar.gz         Linux 源码包（含 install-linux.sh）
-    HeartApp-Relay-<版本>-docker.tar.gz        Docker 构建上下文（不用克隆仓库）
+    HeartApp-Server-<版本>-win64.exe            Windows 独立服务端，不需要装 Python
+    HeartApp-Server-<版本>-linux.tar.gz         Linux 源码包（含 install-linux.sh）
+    HeartApp-Server-<版本>-docker.tar.gz        Docker 构建上下文（不用克隆仓库）
     SHA256SUMS.txt                            校验和
 
 用法：
@@ -29,7 +29,7 @@ DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 OUT = DIST / "relay"
 
-EXE_NAME = "HeartApp-Relay.exe"
+EXE_NAME = "HeartApp-Server.exe"
 
 #: 服务端只需要这些文件；不要牵进 Qt / BLE / 数据库。
 SERVER_FILES = ["__init__.py", "room_protocol.py", "relay.py", "lobby.py"]
@@ -54,7 +54,7 @@ def build_windows_exe() -> Path:
     args = [
         PYINSTALLER,
         "--noconfirm", "--clean", "--onefile", "--console",
-        "--name", "HeartApp-Relay",
+        "--name", "HeartApp-Server",
         "--runtime-tmpdir", ".",          # 与客户端一致：不在 %TEMP% 里解压
         "--paths", str(ROOT),
         "--distpath", str(DIST),
@@ -105,8 +105,8 @@ def _add(tar: tarfile.TarFile, source: Path, arcname: str, mode: int = 0o644) ->
 def build_linux_tarball() -> Path:
     """Linux 源码包：解压后 sudo bash server/install-linux.sh 即可。"""
     print("\n[3/4] 打 Linux 源码包 …")
-    prefix = f"heartapp-relay-{VERSION}"
-    target = OUT / f"HeartApp-Relay-v{VERSION}-linux.tar.gz"
+    prefix = f"heartapp-server-{VERSION}"
+    target = OUT / f"HeartApp-Server-v{VERSION}-linux.tar.gz"
     with tarfile.open(target, "w:gz") as tar:
         for name in SERVER_FILES:
             _add(tar, ROOT / "heartapp" / name, f"{prefix}/heartapp/{name}")
@@ -120,8 +120,8 @@ def build_linux_tarball() -> Path:
 def build_docker_tarball() -> Path:
     """Docker 构建上下文：不用克隆仓库，docker build 就能用。"""
     print("\n[4/4] 打 Docker 构建包 …")
-    prefix = f"heartapp-relay-{VERSION}"
-    target = OUT / f"HeartApp-Relay-v{VERSION}-docker.tar.gz"
+    prefix = f"heartapp-server-{VERSION}"
+    target = OUT / f"HeartApp-Server-v{VERSION}-docker.tar.gz"
     with tarfile.open(target, "w:gz") as tar:
         for name in SERVER_FILES:
             _add(tar, ROOT / "heartapp" / name, f"{prefix}/heartapp/{name}")
@@ -139,15 +139,15 @@ def build_docker_tarball() -> Path:
             "# 在本目录执行：sh build_and_run.sh [访问密码]\n"
             "set -e\n"
             'PASSWORD="${1:-${HEARTAPP_RELAY_PASSWORD:-}}"\n'
-            "docker build -t heartapp-relay .\n"
-            "docker rm -f heartapp-relay >/dev/null 2>&1 || true\n"
-            "docker run -d --name heartapp-relay \\\n"
+            "docker build -t heartapp-server .\n"
+            "docker rm -f heartapp-server >/dev/null 2>&1 || true\n"
+            "docker run -d --name heartapp-server \\\n"
             "    -p 127.0.0.1:8765:8765 \\\n"
             '    -e "HEARTAPP_RELAY_PASSWORD=${PASSWORD}" \\\n'
             "    --restart unless-stopped \\\n"
             "    --read-only --cap-drop ALL --security-opt no-new-privileges:true \\\n"
             '    --memory 384m --cpus 0.5 \\\n'
-            "    heartapp-relay\n"
+            "    heartapp-server\n"
             'echo "已启动：curl http://127.0.0.1:8765/healthz"\n',
             encoding="utf-8",
         )
@@ -175,7 +175,7 @@ def main() -> int:
     exe = build_windows_exe()
     sign_exe()
 
-    exe_target = OUT / f"HeartApp-Relay-v{VERSION}-win64.exe"
+    exe_target = OUT / f"HeartApp-Server-v{VERSION}-win64.exe"
     shutil.move(str(exe), str(exe_target))
 
     linux = build_linux_tarball()
