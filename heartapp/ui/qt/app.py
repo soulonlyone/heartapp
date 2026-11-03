@@ -43,9 +43,16 @@ from ...paths import icon_path
 from ...simulator import DEFAULT_PROFILE, PROFILES
 from ...store import HeartRateStore
 from ...engine import Engine
-from . import theme as T
-from . import widgets as W
-from .editorial import GlobalHotkey, Overlay, PAPER, ensure_light_palette
+from .editorial import (
+    INK,
+    MUTED,
+    PAPER,
+    RULE,
+    Button,
+    GlobalHotkey,
+    Overlay,
+    ensure_light_palette,
+)
 from .editorial_layout import EditorialLayout
 from .chrome import FramelessWindow
 from .room_panel import RoomActions, RoomOverlay
@@ -69,21 +76,21 @@ SOURCE_LABELS = {"ble": "手表", "sim": "模拟", "none": "-"}
 COMBO_QSS = f"""
 QComboBox {{
     background: #FFFFFF;
-    border: 1px solid {T.OUTLINE};
+    border: 1px solid {RULE};
     border-radius: 9px;
     padding: 2px 10px;
-    color: {T.INK};
+    color: {INK};
     min-height: 26px;
 }}
-QComboBox:hover {{ border-color: {T.BORDER_STRONG}; }}
+QComboBox:hover {{ border-color: {RULE}; }}
 QComboBox::drop-down {{ border: none; width: 18px; }}
 QComboBox QAbstractItemView {{
     background: #FFFFFF;
-    border: 1px solid {T.BORDER};
+    border: 1px solid {RULE};
     border-radius: 8px;
     selection-background-color: #F1F1F4;
-    selection-color: {T.INK};
-    color: {T.INK};
+    selection-color: {INK};
+    color: {INK};
     outline: none;
     padding: 4px;
 }}
@@ -94,17 +101,17 @@ QTableWidget {{
     background: #FFFFFF;
     alternate-background-color: #FBFBFC;
     border: none;
-    color: {T.INK};
+    color: {INK};
     gridline-color: transparent;
     selection-background-color: #F1F1F4;
-    selection-color: {T.INK};
+    selection-color: {INK};
     outline: none;
 }}
 QHeaderView::section {{
     background: #FFFFFF;
-    color: {T.INK_3};
+    color: {MUTED};
     border: none;
-    border-bottom: 1px solid {T.DIVIDER};
+    border-bottom: 1px solid {RULE};
     padding: 8px 4px;
     font-weight: 600;
 }}
@@ -450,7 +457,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             return
         self._export_session(self._selected_session_id, directory=directory)
 
-    def _export_button(self, *, variant: str, height: int, current: bool) -> "W.M3Button":
+    def _export_button(self, *, variant: str, height: int, current: bool) -> "Button":
         """带下拉菜单的导出按钮。
 
         明确给两条路：
@@ -458,20 +465,22 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         * 「导出到数据目录」—— 完全不碰系统对话框，直接写进 exe 旁边的 data\，
           这条路径永远有写权限（数据库就在那）。
         """
-        button = W.M3Button("导出 CSV", variant=variant, height=height)
+        button = Button("导出 CSV")
+        button.setFixedHeight(height)
+        button.set_variant(variant)
         menu = QMenu(button)
         menu.setStyleSheet(
             f"""
             QMenu {{
                 background: #FFFFFF;
-                border: 1px solid {T.BORDER};
+                border: 1px solid {RULE};
                 border-radius: 10px;
                 padding: 6px;
             }}
             QMenu::item {{
                 padding: 8px 20px;
                 border-radius: 6px;
-                color: {T.INK};
+                color: {INK};
             }}
             QMenu::item:selected {{ background: #F1F1F4; }}
             """
@@ -756,20 +765,21 @@ class SettingsDialog(QWidget):
 
         self._hint = QLabel()
         self._hint.setWordWrap(True)
-        self._hint.setStyleSheet(f"color: {T.MUTED};")
+        self._hint.setStyleSheet(f"color: {MUTED};")
         layout.addWidget(self._hint)
 
         db_label = QLabel(f"数据库：{store.db_path}")
         db_label.setWordWrap(True)
-        db_label.setStyleSheet(f"color: {T.FAINT}; font-size: 8pt;")
+        db_label.setStyleSheet(f"color: {MUTED}; font-size: 8pt;")
         layout.addWidget(db_label)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        cancel = W.M3Button("取消", variant="text", height=38)
+        cancel = Button("取消")
+        cancel.setFixedHeight(38)
         cancel.clicked.connect(self.close)
         buttons.addWidget(cancel)
-        save = W.M3Button("保存", variant="filled", height=38)
+        save = Button("保存", primary=True)
         save.clicked.connect(self._save)
         buttons.addWidget(save)
         layout.addLayout(buttons)

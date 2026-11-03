@@ -343,16 +343,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command is None:
-        # 图形界面优先用 Qt（真模糊/真透明/抗锯齿）；没装 PySide6 就退回 Tkinter。
-        # 命令行版 exe 两个界面都不打进去，所以还要能优雅降级成帮助信息。
+        # 图形界面只有 Qt 版（D 版数字海报）。命令行版 exe 不打进界面，
+        # 所以导入失败时要能优雅降级成帮助信息。
         gui_main = None
         try:
             from .ui.qt.app import main as gui_main  # type: ignore[assignment]
         except ImportError:
-            try:
-                from .ui.app import main as gui_main  # type: ignore[assignment]
-            except ImportError:
-                gui_main = None
+            gui_main = None
 
         if gui_main is None:
             print("这是命令行版，不含图形界面。")

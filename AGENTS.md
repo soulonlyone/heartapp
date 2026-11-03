@@ -9,7 +9,7 @@
 
 产品方向：PC 游戏期间的实时心率小窗、本地持续记录和整段曲线回看，
 不推断情绪。设计依据见 [docs/pc-monitor-design.md](docs/pc-monitor-design.md)。
-Qt 为新交互入口，Tk 保留旧版兼容界面。
+界面只有 Qt 一种实现（D 版数字海报）。
 
 Windows 桌面工具：通过**蓝牙 BLE** 从智能手表实时读取心率并记录到 SQLite，
 支持历史查询、区间统计、CSV 导出。成品是免安装 exe（PyInstaller 打包）。
@@ -26,7 +26,6 @@ Windows 桌面工具：通过**蓝牙 BLE** 从智能手表实时读取心率并
 | BLE | `bleak` 1.1.x + `winrt-*` 3.2.1 | 异步 API |
 | 存储 | 标准库 `sqlite3` | 无 ORM |
 | GUI | **PySide6-Essentials 6.10.x**（Qt 6） | 主界面 |
-| GUI 兜底 | Tkinter | 仅当 PySide6 导入失败时降级，功能等价但视觉差 |
 | 打包 | PyInstaller 6.22 | 4 个产物 |
 
 ## 3. 目录结构与职责
@@ -43,20 +42,18 @@ heartapp/
 ├── paths.py       路径解析（区分源码运行 / exe 运行）
 ├── cli.py         命令行（probe / list / record / export / gui）
 └── ui/
-    ├── qt/              ★ 主界面（Qt，D 版数字海报）
-    │   ├── editorial.py        设计令牌 + 自绘控件（曲线 / 小窗 / 全局热键 / 调色板）
-    │   ├── editorial_layout.py 实时 / 回看 / 小窗三页布局 + 连接对话框
-    │   ├── app.py              主窗口、事件泵、业务接线
-    │   ├── theme.py            旧版设计令牌（兼容保留）
-    │   ├── widgets.py          旧版自绘控件（兼容保留）
-    │   └── pc_panel.py         旧版 PC 面板 / 置顶小窗（已无引用，兼容保留）
-    ├── theme.py   Tk 版令牌（兜底）
-    ├── widgets.py Tk 版控件
-    └── app.py     Tk 版主窗口
+    └── qt/              ★ 主界面（Qt，D 版数字海报）
+        ├── editorial.py        设计令牌 + 自绘控件（曲线 / 小窗 / 全局热键 / 调色板）
+        ├── editorial_layout.py 实时 / 回看 / 小窗三页布局 + 连接对话框
+        ├── chrome.py           无边框窗口按钮与缩放
+        ├── room_panel.py       联机弹窗与多人小窗
+        ├── lobby_panel.py      服务器登录 / 房间列表
+        ├── comparison.py       多人同坐标曲线
+        └── app.py              主窗口、事件泵、业务接线
 ```
 
 **分层纪律**：业务逻辑（hr/metrics/store/engine）**不得** import 任何 UI 模块。
-两个 UI 共享同一套逻辑层，改逻辑时两边都要能跑。
+界面只有 Qt 一种实现，业务逻辑不得反向依赖它。
 
 联机初版：`room_protocol.py` 为纯协议，`relay.py` 为独立 asyncio 入口，`lobby.py` 管理登录与房间，`room_client.py`
 为独立网络线程；Qt 的 `room_panel.py` 提供主页联机弹窗与多人小窗，`comparison.py` 提供共同坐标轴。
@@ -127,7 +124,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
   关闭按钮必须调用主窗口 `close()` 走保存保护；不要直接退出 QApplication。
 - Qt 新界面绘制在 `editorial.py`，页面构建在 `editorial_layout.py`，事件与业务在 `app.py`。
 - 游戏小窗必须保留，手动事件标记与运动区间不出现在默认流程中。
-- 原 `theme.py`、旧控件与 Tk 界面保留兼容；D 版的配色和数字字体集中在 `editorial.py`。
+- 配色和字体集中在 `editorial.py`，新增控件直接用它导出的令牌，不要再引入第二套主题。
 - 曲线必须先在原始采样上识别缺失区间，再按屏幕像素压缩，避免长记录被画成断线。
 
 ### Qt 特有的坑
@@ -165,8 +162,8 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意
 - **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
   截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
-- PyInstaller `--exclude-module`：GUI 版排除 `tkinter`，CLI 版排除 `tkinter`
-  + `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
+- PyInstaller `--exclude-module`：GUI 版排除 `tkinter`（已无代码引用，只为瘦身）；
+  CLI 版还要排除 `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
 
 ## 9. 代码风格
 
@@ -263,5 +260,5 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 - **不要只测成功路径就宣称改好了**（失败路径才是 bug 藏身处）
 - 不要把心跳数据/用户路径写进示例或测试外的文件
 - 演示、测试及截图只使用「玩家一 / 玩家二」等通用身份；不得从本机账户名、路径或对话推断真实姓名或昵称。
-- 不要删掉 Tk 兜底界面（有些环境装不上 PySide6）
+- 界面只剩 Qt 一种实现（Tk 兜底已于 2026-11 移除）；PySide6 装不上时程序只能退化为命令行
 - 不要在没有跑通两个冒烟测试的情况下声称"已完成"

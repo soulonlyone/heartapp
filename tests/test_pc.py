@@ -91,29 +91,22 @@ class TestPCSession(unittest.TestCase):
         self.assertEqual(rows[1], ["1.250", "'=1+1"])
 
 
-class TestMarkerHotkey(unittest.TestCase):
-    """全局快捷键的消息匹配。
+class TestGlobalHotkey(unittest.TestCase):
+    """Ctrl+Alt+H 全局小窗开关。
 
-    真实按键无法在自动化里模拟（需要系统焦点和一次真按），所以把消息判断抽成
-    纯函数单独验证；注册/释放的降级路径也一并覆盖。
+    真实按键无法在自动化里模拟（需要系统焦点和一次真按），所以只验证常量编码
+    和「没有 QApplication 时的降级路径」。
     """
 
-    def test_matches_only_the_marker_hotkey(self):
-        from heartapp.ui.qt.pc_panel import is_marker_hotkey
-
-        self.assertTrue(is_marker_hotkey(0x0312, 0x4841))       # WM_HOTKEY + 我们的 id
-        self.assertFalse(is_marker_hotkey(0x0312, 0x4842))      # 别的热键 id
-        self.assertFalse(is_marker_hotkey(0x0100, 0x4841))      # 键盘消息，不是 WM_HOTKEY
-        self.assertFalse(is_marker_hotkey(0x0000, 0x0000))
-
-    def test_constants_encode_ctrl_alt_f8(self):
-        from heartapp.ui.qt import pc_panel
+    def test_constants_encode_ctrl_alt_h(self):
+        from heartapp.ui.qt.editorial import GlobalHotkey
 
         # MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
-        self.assertEqual(pc_panel.MARKER_HOTKEY_MODIFIERS & 0x0002, 0x0002)
-        self.assertEqual(pc_panel.MARKER_HOTKEY_MODIFIERS & 0x0001, 0x0001)
-        self.assertEqual(pc_panel.MARKER_HOTKEY_MODIFIERS & 0x4000, 0x4000)
-        self.assertEqual(pc_panel.MARKER_HOTKEY_VK, 0x77)       # VK_F8
+        self.assertEqual(GlobalHotkey.MODIFIERS & 0x0002, 0x0002)
+        self.assertEqual(GlobalHotkey.MODIFIERS & 0x0001, 0x0001)
+        self.assertEqual(GlobalHotkey.MODIFIERS & 0x4000, 0x4000)
+        self.assertEqual(GlobalHotkey.VK, 0x48)  # VK_H
+        self.assertEqual(GlobalHotkey.ID, 0x4842)
 
     def test_close_without_registration_is_safe(self):
         """没有 QApplication 时不应注册，close() 也要能重复调用不报错。
@@ -123,15 +116,15 @@ class TestMarkerHotkey(unittest.TestCase):
         """
         from unittest.mock import patch
 
-        from heartapp.ui.qt.pc_panel import MarkerHotkey
+        from heartapp.ui.qt.editorial import GlobalHotkey
 
         class _NoApp:
             @staticmethod
             def instance():
                 return None
 
-        with patch("heartapp.ui.qt.pc_panel.QApplication", _NoApp):
-            hotkey = MarkerHotkey(lambda: None)
+        with patch("heartapp.ui.qt.editorial.QApplication", _NoApp):
+            hotkey = GlobalHotkey(lambda: None)
         self.assertFalse(hotkey.registered)
         hotkey.close()
         hotkey.close()
