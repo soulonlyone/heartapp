@@ -102,8 +102,10 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 # 重新打包 4 个 exe
 .venv\Scripts\python.exe tools\build_exe.py
 
-# 截图（改动界面后用来肉眼确认）
-.venv\Scripts\python.exe tools\qt_screenshot_demo.py screenshot.png 30 live interval
+# 界面截图（只用合成数据，改动界面后用来肉眼确认；生成物在 _test_output/）
+.venv\Scripts\python.exe tools\d_gui_preview.py
+.venv\Scripts\python.exe tools\room_comparison_preview.py
+.venv\Scripts\python.exe tools\lobby_preview.py
 ```
 
 **提交前必须**：

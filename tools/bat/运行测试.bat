@@ -1,42 +1,45 @@
 @echo off
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 title 心率记录仪 - 测试
 
 set "PY=.venv\Scripts\python.exe"
 
 if not exist "%PY%" (
     echo.
-    echo   还没准备好环境，先运行一次「启动心率记录仪.bat」。
+    echo   还没准备好环境，先运行一次根目录的「启动心率记录仪.bat」。
     echo.
     pause
     exit /b 1
 )
 
 echo ============================================================
-echo  1/3  单元测试
+echo  1/3  单元测试（157 个）
 echo ============================================================
 "%PY%" run_tests.py
 if errorlevel 1 goto failed
 
 echo.
 echo ============================================================
-echo  2/3  后端全链路冒烟测试（模拟源，约 13 秒）
+echo  2/3  后端全链路冒烟（模拟源，约 13 秒）
 echo ============================================================
 "%PY%" smoke_test.py
 if errorlevel 1 goto failed
 
 echo.
 echo ============================================================
-echo  3/3  界面全流程冒烟测试（自动操作窗口，约 15 秒）
+echo  3/3  界面全流程冒烟（自动操作窗口，约 20 秒）
 echo ============================================================
-"%PY%" gui_smoke_test.py
+"%PY%" tools\qt_smoke_test.py
 if errorlevel 1 goto failed
 
 echo.
 echo ============================================================
-echo   全部测试通过
+echo   全部通过
+echo.
+echo   联机冒烟要起双客户端，比较慢，需要时单独跑：
+echo     "%PY%" tools\room_smoke_test.py
 echo ============================================================
 pause
 exit /b 0

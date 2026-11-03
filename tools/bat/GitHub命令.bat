@@ -15,7 +15,7 @@ rem gh 依赖 Go 的 TLS，不走 Windows 系统代理，所以要显式给环�
 set "HTTP_PROXY=http://127.0.0.1:7897"
 set "HTTPS_PROXY=http://127.0.0.1:7897"
 
-set "GH=%~dp0.tools\gh\bin\gh.exe"
+set "GH=%~dp0..\..\.tools\gh\bin\gh.exe"
 
 if not exist "%GH%" (
     echo [x] 找不到 gh：%GH%

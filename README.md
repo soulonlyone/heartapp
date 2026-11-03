@@ -9,7 +9,7 @@
 
 > **只描述观察值。** 不把心率升高解释成紧张、压力或兴奋——那需要更多上下文，程序不替你判断。
 
-![多人对比](screenshot-multiplayer.png)
+![多人对比](docs/images/screenshot-multiplayer.png)
 
 ## 这是什么
 
@@ -76,9 +76,9 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑
 - 服务端**不保存心率历史**；密码与会话令牌不落盘，重启软件重新登录
 
 服务器需要自己部署，见 [服务端说明](server/README.md)。
-想先看效果：双击 `联机本机演示.bat`，会起本地服务和两个模拟玩家。
+想先看效果：双击 `tools/bat/联机本机演示.bat`，会起本地服务和两个模拟玩家。
 
-![联机房间](screenshot-lobby.png)
+![联机房间](docs/images/screenshot-lobby.png)
 
 ## 数据在哪
 

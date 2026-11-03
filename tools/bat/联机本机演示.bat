@@ -2,7 +2,7 @@
 rem Keep CRLF line endings for Windows cmd.exe.
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 if not exist ".venv\Scripts\python.exe" (
     echo 请先运行「启动心率记录仪.bat」准备环境。
     pause
