@@ -229,14 +229,29 @@ try:
         if len(rows) < 2:
             problems.append("导出的 CSV 没有数据行")
 
-    # 故意挑一个必然写不进去的目录，验证会自动兜底到数据目录
+    # 验证无权限时自动兜底到数据目录。
+    # 不能依赖真实目录权限：CI 的 runner 是管理员，连 System32 都能写，
+    # 那样兜底分支根本不会触发。改为注入一次 PermissionError——
+    # 第一次调用失败走兜底，兜底路径再调一次会成功。
     for stale in export_dir.glob("心率记录_*.csv"):
         stale.unlink()
-    blocked = Path(r"C:\Windows\System32\__heartapp_no_permission__")
-    window._export_session(sid, directory=blocked)
-    pump(0.3)
+    real_export = window.store.export_csv
+    calls = {"n": 0}
+
+    def flaky_export(session_id, path):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("模拟：目标位置没有写入权限")
+        return real_export(session_id, path)
+
+    window.store.export_csv = flaky_export
+    try:
+        window._export_session(sid, directory=Path(r"C:\__heartapp_blocked__"))
+        pump(0.3)
+    finally:
+        window.store.export_csv = real_export
     fallback = sorted(export_dir.glob("心率记录_*.csv"))
-    print("    兜底导出产物:", len(fallback))
+    print("    兜底导出产物:", len(fallback), "| 导出调用次数:", calls["n"])
     if not fallback:
         problems.append("无权限时没有自动兜底到数据目录")
 
