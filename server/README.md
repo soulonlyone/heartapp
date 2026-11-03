@@ -140,6 +140,8 @@ powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Remove
 
 - 任务以 `SYSTEM` 运行，开机自动启动，失败自动重试 3 次
 - 启动脚本里可能含访问密码，已通过 `icacls` 限制为仅 SYSTEM / Administrators 可读
+- 启动器为带 UTF-8 BOM 的 `server/app/service-run.ps1`，支持中文密码和中文路径。
+  从旧版升级后需重新执行 `service-windows.ps1 -Install`，才能更新已注册任务的启动入口。
 - 客户端填写 `ws://这台电脑的IP:8765`
 
 ## 手动运行

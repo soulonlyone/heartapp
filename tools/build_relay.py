@@ -134,12 +134,12 @@ def build_docker_tarball() -> Path:
             _add(tar, dockerignore, f"{prefix}/.dockerignore")
 
         helper = OUT / "build_and_run.sh"
-        helper.write_text(
+        helper.write_bytes((
             "#!/usr/bin/env sh\n"
             "# 在本目录执行：sh build_and_run.sh [访问密码]\n"
             "set -e\n"
             'PASSWORD="${1:-${HEARTAPP_RELAY_PASSWORD:-}}"\n'
-            "docker build -t heartapp-server .\n"
+            "docker build -f server/Dockerfile -t heartapp-server .\n"
             "docker rm -f heartapp-server >/dev/null 2>&1 || true\n"
             "docker run -d --name heartapp-server \\\n"
             "    -p 127.0.0.1:8765:8765 \\\n"
@@ -148,9 +148,8 @@ def build_docker_tarball() -> Path:
             "    --read-only --cap-drop ALL --security-opt no-new-privileges:true \\\n"
             '    --memory 384m --cpus 0.5 \\\n'
             "    heartapp-server\n"
-            'echo "已启动：curl http://127.0.0.1:8765/healthz"\n',
-            encoding="utf-8",
-        )
+            'echo "已启动：curl http://127.0.0.1:8765/healthz"\n'
+        ).encode("utf-8"))
         _add(tar, helper, f"{prefix}/build_and_run.sh", 0o755)
         helper.unlink()
     return target

@@ -27,7 +27,7 @@ $TaskName = "HeartAppRelay"
 $ServerDir = $PSScriptRoot
 $AppDir = Join-Path $ServerDir "app"
 $VenvPython = Join-Path $ServerDir ".venv\Scripts\python.exe"
-$RunCmd = Join-Path $AppDir "service-run.cmd"
+$RunScript = Join-Path $AppDir "service-run.ps1"
 $FirewallRule = "HeartApp Relay $Port"
 
 function Test-Admin {
@@ -43,6 +43,31 @@ function Show-Usage {
     Write-Host "  powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Remove"
 }
 
+function Write-ServiceLauncher {
+    param(
+        [string]$Path,
+        [string]$WorkingDirectory,
+        [string]$Python,
+        [string]$AccessPassword,
+        [int]$ListenPort,
+        [int]$ClientLimit,
+        [int]$RoomLimit
+    )
+    # 单引号字面量避免密码中的 %、$、引号或反引号被再次解释。
+    $quotedDirectory = $WorkingDirectory.Replace("'", "''")
+    $quotedPython = $Python.Replace("'", "''")
+    $lines = @("Set-Location -LiteralPath '$quotedDirectory'")
+    if ($AccessPassword) {
+        $quotedPassword = $AccessPassword.Replace("'", "''")
+        $lines += "`$env:HEARTAPP_RELAY_PASSWORD = '$quotedPassword'"
+    }
+    $lines += "& '$quotedPython' -m heartapp.relay --host 0.0.0.0 --port $ListenPort --max-clients $ClientLimit --room-size $RoomLimit"
+    $lines += 'exit $LASTEXITCODE'
+    # Windows PowerShell 5.1 需要 BOM 才能可靠读取中文路径和密码。
+    $encoding = New-Object System.Text.UTF8Encoding($true)
+    [System.IO.File]::WriteAllText($Path, (($lines -join "`r`n") + "`r`n"), $encoding)
+}
+
 function Invoke-Install {
     if (-not (Test-Admin)) {
         throw "需要管理员权限。请右键「以管理员身份运行」PowerShell 后再执行。"
@@ -54,25 +79,17 @@ function Invoke-Install {
         throw "找不到 $AppDir\heartapp\relay.py。请先双击 install-windows.bat。"
     }
 
-    Write-Host "生成启动脚本 $RunCmd"
-    $lines = @(
-        "@echo off"
-        "chcp 65001 >nul"
-        "cd /d `"$AppDir`""
-    )
-    if ($Password) {
-        $lines += "set `"HEARTAPP_RELAY_PASSWORD=$Password`""
-    } else {
-        $lines += "rem HEARTAPP_RELAY_PASSWORD 未设置：任何人都能登录，仅建议纯局域网使用"
-    }
-    $lines += "`"$VenvPython`" -m heartapp.relay --host 0.0.0.0 --port $Port --max-clients $MaxClients --room-size $RoomSize"
-    Set-Content -Path $RunCmd -Value $lines -Encoding ASCII
+    Write-Host "生成启动脚本 $RunScript"
+    Write-ServiceLauncher -Path $RunScript -WorkingDirectory $AppDir -Python $VenvPython `
+        -AccessPassword $Password -ListenPort $Port -ClientLimit $MaxClients -RoomLimit $RoomSize
 
     # 启动脚本里可能有访问密码，只允许管理员 / SYSTEM 读取
-    & icacls $RunCmd /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(R)" | Out-Null
+    & icacls $RunScript /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(R)" | Out-Null
 
     Write-Host "注册计划任务 $TaskName（开机启动，以 SYSTEM 运行）"
-    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$RunCmd`"" -WorkingDirectory $AppDir
+    $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $action = New-ScheduledTaskAction -Execute $powershell `
+        -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$RunScript`"" -WorkingDirectory $AppDir
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -112,9 +129,11 @@ function Invoke-Remove {
     Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue |
         Remove-NetFirewallRule -ErrorAction SilentlyContinue
     Write-Host "已删除防火墙规则：$FirewallRule"
-    if (Test-Path $RunCmd) {
-        Remove-Item $RunCmd -Force -ErrorAction SilentlyContinue
-        Write-Host "已删除 $RunCmd"
+    foreach ($launcher in @($RunScript, (Join-Path $AppDir "service-run.cmd"))) {
+        if (Test-Path -LiteralPath $launcher) {
+            Remove-Item -LiteralPath $launcher -Force -ErrorAction SilentlyContinue
+            Write-Host "已删除 $launcher"
+        }
     }
     Write-Host "卸载完成（代码和虚拟环境仍保留在 $ServerDir）"
 }
