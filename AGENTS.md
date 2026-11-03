@@ -80,7 +80,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 159 个）
+# 跑全部单元测试（当前 167 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）
@@ -262,3 +262,9 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 - 演示、测试及截图只使用「玩家一 / 玩家二」等通用身份；不得从本机账户名、路径或对话推断真实姓名或昵称。
 - 界面只剩 Qt 一种实现（Tk 兜底已于 2026-11 移除）；PySide6 装不上时程序只能退化为命令行
 - 不要在没有跑通两个冒烟测试的情况下声称"已完成"
+
+## 13. Windows 服务端面板
+
+面板在 `ui/qt/server_panel.py`，纯逻辑控制器在 `server_control.py`。独立线程复用 Relay，
+不导入采集引擎、BLE 或数据库。配置不保存密码；退出先停止本实例，不接管其他服务。
+改动后还需运行 `tools/server_panel_smoke_test.py`。Linux/Docker 仍只运行无界面核心，无需 Qt。

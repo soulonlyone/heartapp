@@ -3,8 +3,13 @@
 独立、可自部署的 WebSocket 转发服务，用来支持「联机房间」功能。
 不需要中央账号或公共服务器——所有参与者连接同一台你自己部署的服务端。
 
-**服务端不包含 GUI、BLE 和数据库**，只需要 Python 3.9+ 与 `websockets`。
+**无界面转发核心不包含 GUI、BLE 和数据库**，只需要 Python 3.9+ 与 `websockets`。
 它可以只部署 4 个文件运行，不需要在服务器上装 Qt。
+
+Windows 新增可视化控制面板，可启动/停止、设置密码、复制地址及收起到托盘。
+三端操作说明：[Windows 面板](Windows面板说明.md) · [Linux](Linux说明.md) · [Docker](Docker说明.md)。
+面板源码入口为根目录 `启动服务端面板.bat`，独立打包入口为 `tools/build_server_panel.py`。
+此面板及上一轮分发修复尚未替换旧版 Release 附件。
 
 ## 直接下载现成的包
 
