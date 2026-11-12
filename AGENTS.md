@@ -80,7 +80,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 171 个）
+# 跑全部单元测试（当前 187 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）

@@ -1,0 +1,164 @@
+diff --git a/heartapp/relay.py b/heartapp/relay.py
+index aafe67e..35aebdf 100644
+--- a/heartapp/relay.py
++++ b/heartapp/relay.py
+@@ -21,7 +21,8 @@ async def start_server(relay: Relay, host: str = "127.0.0.1", port: int = 8765,
+                        *, tls: Optional[ssl.SSLContext] = None) -> Server:
+     def health(connection: ServerConnection, request: Request) -> Optional[Response]:
+         if request.path == "/healthz":
+-            return connection.respond(200, f"HeartApp relay v{VERSION} OK\n")
++            # 只回 OK：不暴露版本与协议号，避免给扫描器提供指纹。
++            return connection.respond(200, "OK\n")
+         if request.path != "/":
+             return connection.respond(404, "Not found\n")
+         return None
+@@ -61,7 +62,7 @@ def main() -> None:
+                 "  python -m heartapp.relay --host 127.0.0.1 --port 8765 --max-clients 20\n"
+                 "  python -m heartapp.relay --host 0.0.0.0 --room-size 4\n\n"
+                 "密码：优先使用环境变量 HEARTAPP_RELAY_PASSWORD，避免写入进程命令行。\n"
+-                "验收：访问 http://127.0.0.1:8765/healthz；前台运行按 Ctrl+C 停止。\n"
++                "验收：访问 http://127.0.0.1:8765/healthz 返回 OK；前台运行按 Ctrl+C 停止。\n"
+                 "帮助不会启动服务。完整操作见 server/Linux说明.md、server/Docker说明.md。"),
+     )
+     parser.add_argument("--version", action="version", version=f"HeartApp relay {__version__} · protocol {VERSION}")
+@@ -72,6 +73,11 @@ def main() -> None:
+                         help=f"每房间人数 1～{MAX_ROOM_SIZE}（默认：%(default)s）")
+     parser.add_argument("--cert", help="TLS 证书文件")
+     parser.add_argument("--key", help="TLS 私钥文件")
++    parser.add_argument(
++        "--allow-plaintext",
++        action="store_true",
++        help="允许在非本机地址上以明文运行；仅适合可信局域网（公网请用 HTTPS 反代）",
++    )
+     parser.add_argument(
+         "--password",
+         help="访问密码；也可用环境变量 HEARTAPP_RELAY_PASSWORD。"
+@@ -82,6 +88,13 @@ def main() -> None:
+         parser.error(f"房间人数应为 1～{MAX_ROOM_SIZE}，总连接上限应为 1～10000")
+     if bool(args.cert) != bool(args.key):
+         parser.error("--cert 与 --key 必须同时提供")
++    loopback = {"127.0.0.1", "localhost", "::1", "[::1]"}
++    if not args.cert and args.host not in loopback and not args.allow_plaintext:
++        parser.error(
++            f"拒绝在 {args.host} 上以明文启动：访问密码和心率都会明文经过网络。\n"
++            "  仅局域网使用：加 --allow-plaintext；\n"
++            "  公网使用：先配置 HTTPS 反向代理，本机监听 127.0.0.1（见 server/README.md）。"
++        )
+     # 不记录 WebSocket 消息、昵称、房间码或心率。
+     logging.getLogger("websockets.server").setLevel(logging.CRITICAL)
+     try:
+diff --git a/server/install-linux.sh b/server/install-linux.sh
+index 99d65fd..7f678d1 100644
+--- a/server/install-linux.sh
++++ b/server/install-linux.sh
+@@ -26,7 +26,7 @@ RUN_USER=heartapp
+ PORT=8765
+ MAX_CLIENTS=20
+ ROOM_SIZE=4
+-BIND_HOST=0.0.0.0
++BIND_HOST=127.0.0.1
+ PASSWORD=""
+ PASSWORD_SET=0
+ CONFIG_ARGS=()
+@@ -39,7 +39,7 @@ usage() {
+ HeartApp Linux 服务端安装器（systemd）
+ 用法：sudo bash server/install-linux.sh [参数]
+ 
+-  --host ADDRESS       监听地址，默认 0.0.0.0；反向代理建议 127.0.0.1
++  --host ADDRESS       监听地址，默认 127.0.0.1；局域网直连才用 0.0.0.0
+   --port PORT          服务端口，默认 8765
+   --max-clients COUNT  总连接上限，默认 20
+   --room-size COUNT    每房间人数 1～128，默认 4
+@@ -152,6 +152,16 @@ exec /opt/heartapp-relay/venv/bin/python /opt/heartapp-relay/manage-linux.py "$@
+ LAUNCHER
+ chmod 755 /usr/local/bin/heartapp-server
+ 
++PLAINTEXT_FLAG=""
++case "$BIND_HOST" in
++    127.0.0.1|localhost|::1|"[::1]") ;;
++    *)
++        PLAINTEXT_FLAG=" --allow-plaintext"
++        log "注意：绑定 $BIND_HOST 且未启用 TLS，访问密码和心率会明文经过网络"
++        log "      仅适合可信局域网；公网请配置 HTTPS 反代并改用 --host 127.0.0.1"
++        ;;
++esac
++
+ log "写入 systemd 服务 /etc/systemd/system/${SERVICE}.service"
+ cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
+ [Unit]
+@@ -165,7 +175,7 @@ User=${RUN_USER}
+ Group=${RUN_USER}
+ EnvironmentFile=${ENV_FILE}
+ WorkingDirectory=${APP_DIR}
+-ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
++ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay${PLAINTEXT_FLAG} --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
+ Restart=on-failure
+ RestartSec=3
+ 
+diff --git a/server/manage-linux.py b/server/manage-linux.py
+index fa9a966..062751f 100644
+--- a/server/manage-linux.py
++++ b/server/manage-linux.py
+@@ -18,7 +18,7 @@ ENV_FILE = Path('/etc/heartapp-relay.env')
+ UNIT_FILE = Path('/etc/systemd/system/heartapp-relay.service')
+ SERVICE = 'heartapp-relay'
+ HEADER = '# HeartApp managed configuration v1'
+-DEFAULTS = dict(host='0.0.0.0', port='8765', max_clients='20', room_size='4', user='heartapp', password='')
++DEFAULTS = dict(host='127.0.0.1', port='8765', max_clients='20', room_size='4', user='heartapp', password='')
+ 
+ 
+ def env_key(key):
+@@ -61,6 +61,16 @@ def load_settings():
+     return settings
+ 
+ 
++#: 密码最短长度；太短的和常见弱密码直接拒绝。
++MIN_PASSWORD_LENGTH = 8
++WEAK_PASSWORDS = {
++    'password', 'passw0rd', '12345678', '123456789', '87654321',
++    'qwertyui', 'abcdefgh', '11111111', '88888888', 'heartapp',
++}
++#: 只用于校验其它字段时占位的合法密码，避免每次都要真实密码。
++PASSWORD_PLACEHOLDER = 'validate-only'
++
++
+ def validate(settings):
+     for key, low, high in (('port', 1, 65535), ('max_clients', 1, 10000), ('room_size', 1, 128)):
+         if not settings[key].isascii() or not settings[key].isdigit() or not low <= int(settings[key]) <= high:
+@@ -69,8 +79,15 @@ def validate(settings):
+         raise ValueError('系统运行用户名无效')
+     if not re.fullmatch(r'[A-Za-z0-9_.:%-]+', settings['host']):
+         raise ValueError('监听地址无效')
+-    if not settings['password'] or not settings['password'].isprintable():
++    password = settings['password']
++    if not password or not password.isprintable():
+         raise ValueError('访问密码不能为空，也不能包含换行等控制字符')
++    if len(password) < MIN_PASSWORD_LENGTH:
++        raise ValueError(f'访问密码至少 {MIN_PASSWORD_LENGTH} 位')
++    if len(set(password)) == 1:
++        raise ValueError('访问密码不能是同一个字符重复')
++    if password.lower() in WEAK_PASSWORDS:
++        raise ValueError('这个密码太常见，换一个')
+ 
+ 
+ def save_settings(settings):
+@@ -196,7 +213,7 @@ def read_number(settings, key, label):
+     while True:
+         value = input(f'{label} [{settings[key]}]：').strip() or settings[key]
+         try:
+-            validate(dict(DEFAULTS, password='check', **{key: value}))
++            validate(dict(DEFAULTS, password=PASSWORD_PLACEHOLDER, **{key: value}))
+         except ValueError as exc:
+             print(exc)
+             continue
+@@ -225,6 +242,10 @@ def configure(args):
+             validate(settings)
+             print(f"\n监听地址 {settings['host']}，端口 {settings['port']}。")
+             print('访问密码已设置——客户端登录服务器时填它。')
++            if settings['host'] not in ('127.0.0.1', 'localhost', '::1', '[::1]'):
++                print(f"\n注意：监听 {settings['host']} 且未启用 TLS，"
++                      '访问密码和心率会明文经过网络，仅适合可信局域网。')
++                print('公网使用请配置 HTTPS 反向代理并把监听地址改为 127.0.0.1。')
+             print('安装或升级会重启服务，现有临时房间会清空。')
+             if not confirm('确认安装并启动服务？'):
+                 print('已取消，原配置保留。')
