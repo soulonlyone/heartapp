@@ -46,6 +46,34 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
 
 不放心管道安装，先下载检查：`curl -fsSLO .../deploy.sh && less deploy.sh && sudo bash deploy.sh`。
 
+### 连不上 GitHub 时
+
+国内直连 `github.com` 常超时（报 `Failed to connect to github.com port 443`）。三个办法：
+
+**1. 用镜像**（脚本内置支持，需指定版本）
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
+sudo bash deploy.sh --version v1.4.0 --mirror https://ghfast.top/
+```
+
+`--mirror` 只是给下载地址加前缀，不换脚本；镜像站是否可用需你自己确认。
+
+**2. 在能上网的电脑下载，再传到服务器**（最稳）
+
+```sh
+# 浏览器打开 releases/latest，下载 HeartApp-Server-v<版本>-linux.tar.gz
+scp HeartApp-Server-v1.4.0-linux.tar.gz you@server:/tmp/
+```
+
+```sh
+# 服务器上
+cd /tmp && tar -xzf HeartApp-Server-v1.4.0-linux.tar.gz
+cd heartapp-server-1.4.0 && sudo bash server/install-linux.sh
+```
+
+**3. 直接放到有一台能访问 GitHub 的机器上编译/运行**（服务端只需要 Python + websockets）
+
 装好之后用管理菜单：
 
 ```sh

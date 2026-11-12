@@ -90,6 +90,8 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
 ```
 
 装的过程中会**隐藏输入密码**、确认端口，然后注册 systemd 服务。
+国内直连 GitHub 超时可加镜像：`--version v1.4.0 --mirror https://ghfast.top/`
+（详见 [服务端文档](server/README.md)）。
 无人值守部署用 `--non-interactive` 并把密码放进环境变量 `HEARTAPP_INSTALL_PASSWORD`
 （命令行传密码会留在 shell 历史里）。
 

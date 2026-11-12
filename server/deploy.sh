@@ -9,6 +9,10 @@
 #   less deploy.sh
 #   sudo bash deploy.sh
 #
+# 国内直连 GitHub 超时时，加镜像前缀（需同时指定版本）：
+#
+#   bash deploy.sh --version v1.4.0 --mirror https://ghfast.top/
+#
 # 参数（全部可选）：
 #   默认进入交互向导：隐藏输入密码 → 选择端口 → 确认安装
 #   --password <口令>    自动部署时预设访问密码
@@ -28,6 +32,7 @@ set -euo pipefail
 
 REPO="soulonlyone/heartapp"
 VERSION=""
+MIRROR=""
 DRY_RUN=0
 ARGS=()
 
@@ -37,6 +42,7 @@ die() { printf '错误：%s\n' "$*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --version) [ $# -ge 2 ] || die "--version 需要一个值"; VERSION="$2"; shift 2 ;;
+        --mirror)  [ $# -ge 2 ] || die "--mirror 需要一个前缀"; MIRROR="$2"; shift 2 ;;
         --non-interactive) ARGS+=("$1"); shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --password|--port|--max-clients|--room-size|--host|--user)
@@ -48,6 +54,7 @@ HeartApp Linux 一行部署
 用法：curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 默认在控制终端进入安装向导，按提示设置密码和端口并确认安装。
 --version TAG 指定 Release；--dry-run 只下载解压；--non-interactive 用于自动部署。
+--mirror 前缀 给 GitHub 下载地址加代理，例如 https://ghfast.top/（需同时给 --version）。
 可传 --password、--port、--host、--max-clients、--room-size、--user。
 安装后运行 sudo heartapp-server 打开管理菜单。
 HELP
@@ -66,6 +73,10 @@ for candidate in sha256sum shasum; do
 done
 
 # ---- 确定版本 ----
+if [ -z "$VERSION" ] && [ -n "$MIRROR" ]; then
+    die "用 --mirror 时必须同时指定 --version，例如 --version v1.4.0"
+fi
+
 if [ -z "$VERSION" ]; then
     say "查询最新 Release …"
     TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
@@ -79,14 +90,18 @@ say "目标版本：$TAG"
 
 ASSET="HeartApp-Server-${TAG}-linux.tar.gz"
 BASE="${HEARTAPP_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
+[ -n "$MIRROR" ] && BASE="${MIRROR%/}/$BASE"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 say "下载 $ASSET"
 say "  $BASE/$ASSET"
-curl -fsSL --retry 3 --connect-timeout 15 -o "$TMP/$ASSET" "$BASE/$ASSET" \
-    || die "下载失败。确认版本 $TAG 存在、仓库可访问，或用 --version 指定其它版本"
+curl -fsSL --retry 2 --connect-timeout 15 --max-time 300 -o "$TMP/$ASSET" "$BASE/$ASSET" \
+    || die "下载失败（多为网络不通，不是版本问题）。可选：
+  1) 加镜像：加参数 --mirror https://ghfast.top/ --version $TAG
+  2) 先下载脚本再本地跑：curl -fsSLO .../deploy.sh，看清后 sudo bash deploy.sh
+  3) 在能上 GitHub 的电脑下载 ${ASSET}，上传到服务器后手动安装"
 
 # ---- 校验和 ----
 EXPECTED=""
