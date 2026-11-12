@@ -48,16 +48,19 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
 
 ### 连不上 GitHub 时
 
-国内直连 `github.com` 常超时（报 `Failed to connect to github.com port 443`）。三个办法：
+国内直连 `github.com` 常超时（`Failed to connect to github.com port 443`）。**脚本已经自动处理**：
 
-**1. 用镜像**（脚本内置支持，需指定版本）
+- 直连失败会依次尝试 `ghfast.top`、`gh-proxy.com`、`ghproxy.net` 三个镜像
+- `api.github.com` 不可达时，改为从仓库的 `server/LATEST` 读取版本号
+
+所以通常什么都不用加。想强制指定某个镜像再执行：
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
 sudo bash deploy.sh --version v1.4.0 --mirror https://ghfast.top/
 ```
 
-`--mirror` 只是给下载地址加前缀，不换脚本；镜像站是否可用需你自己确认。
+如果连脚本本身都下载不下来（`raw.githubusercontent.com` 也不通），用下面的办法 2。
 
 **2. 在能上网的电脑下载，再传到服务器**（最稳）
 

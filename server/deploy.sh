@@ -54,7 +54,7 @@ HeartApp Linux 一行部署
 用法：curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 默认在控制终端进入安装向导，按提示设置密码和端口并确认安装。
 --version TAG 指定 Release；--dry-run 只下载解压；--non-interactive 用于自动部署。
---mirror 前缀 给 GitHub 下载地址加代理，例如 https://ghfast.top/（需同时给 --version）。
+--mirror 前缀 强制只用某个镜像，如 https://ghfast.top/（默认已自动回退，一般不用给）。
 可传 --password、--port、--host、--max-clients、--room-size、--user。
 安装后运行 sudo heartapp-server 打开管理菜单。
 HELP
@@ -72,17 +72,48 @@ for candidate in sha256sum shasum; do
     command -v "$candidate" >/dev/null 2>&1 && { SHA_TOOL="$candidate"; break; }
 done
 
+# 直连不通时自动尝试的 GitHub 镜像；用 --mirror 可指定单一前缀。
+MIRRORS=("https://ghfast.top" "https://gh-proxy.com" "https://ghproxy.net")
+
+fetch() {
+    # fetch <url> <输出文件> [quiet]
+    # 直连失败按 MIRRORS 顺序重试；给了 --mirror 就只用它。
+    local url="$1" out="$2" quiet="${3:-}" prefix target
+    local -a prefixes
+    if [ -n "$MIRROR" ]; then
+        prefixes=("${MIRROR%/}")
+    else
+        prefixes=("" "${MIRRORS[@]}")
+    fi
+    for prefix in "${prefixes[@]}"; do
+        if [ -z "$prefix" ]; then
+            target="$url"
+        else
+            target="${prefix%/}/$url"
+        fi
+        if curl -fsSL --retry 1 --connect-timeout 10 --max-time 300 -o "$out" "$target" 2>/dev/null; then
+            [ -z "$quiet" ] && [ -n "$prefix" ] && say "  经镜像 $prefix 下载成功"
+            return 0
+        fi
+        [ -z "$quiet" ] && [ -z "$prefix" ] && say "  直连失败，尝试镜像 …"
+    done
+    return 1
+}
+
 # ---- 确定版本 ----
-if [ -z "$VERSION" ] && [ -n "$MIRROR" ]; then
-    die "用 --mirror 时必须同时指定 --version，例如 --version v1.4.0"
-fi
 
 if [ -z "$VERSION" ]; then
     say "查询最新 Release …"
-    TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    TAG="$(curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
         | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
         | sed 's/.*"\([^"]*\)"$/\1/')" || true
-    [ -n "${TAG:-}" ] || die "查不到最新版本，请用 --version 指定，例如 --version v1.2.0"
+    if [ -z "${TAG:-}" ]; then
+        say "  api.github.com 不可达，改从仓库读取版本号"
+        TAG="$(curl -fsSL --connect-timeout 10 --max-time 20 \
+            "https://raw.githubusercontent.com/${REPO}/main/server/LATEST" 2>/dev/null \
+            | tr -d '[:space:]')" || true
+    fi
+    [ -n "${TAG:-}" ] || die "查不到最新版本，请用 --version 指定，例如 --version v1.4.0"
 else
     TAG="$VERSION"
 fi
@@ -96,16 +127,14 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 say "下载 $ASSET"
-say "  $BASE/$ASSET"
-curl -fsSL --retry 2 --connect-timeout 15 --max-time 300 -o "$TMP/$ASSET" "$BASE/$ASSET" \
-    || die "下载失败（多为网络不通，不是版本问题）。可选：
-  1) 加镜像：加参数 --mirror https://ghfast.top/ --version $TAG
-  2) 先下载脚本再本地跑：curl -fsSLO .../deploy.sh，看清后 sudo bash deploy.sh
-  3) 在能上 GitHub 的电脑下载 ${ASSET}，上传到服务器后手动安装"
+fetch "$BASE/$ASSET" "$TMP/$ASSET" || die "下载失败：直连和镜像都没通（不是版本问题）。可选：
+  1) 手动指定镜像：--mirror https://ghfast.top/
+  2) 在能上 GitHub 的电脑下载 ${ASSET}，上传到服务器后按 server/README.md 手动安装
+  3) 换一台能访问 GitHub 的机器运行服务端（只需 Python 3.9+ 和 websockets）"
 
 # ---- 校验和 ----
 EXPECTED=""
-if curl -fsSL --retry 2 --connect-timeout 10 -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" 2>/dev/null; then
+if fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt" quiet; then
     # sha256sum 在不同平台输出 "hash  file" 或 "hash *file"（二进制标记），两种都要认。
     # 用 `|| true` 兜住：匹配不到时不能让 set -e 把整个脚本杀掉。
     EXPECTED="$(awk -v f="$ASSET" '$2 == f || $2 == "*" f { print $1; exit }' \

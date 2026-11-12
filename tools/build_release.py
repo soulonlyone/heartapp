@@ -138,6 +138,11 @@ def main() -> int:
     files = assemble()
     sums = checksums(files)
 
+    # deploy.sh 在 api.github.com 不可达时用它解析版本号，随发布一起提交。
+    latest = ROOT / "server" / "LATEST"
+    latest.write_text(f"v{V}\n", encoding="utf-8")
+    print(f"  已更新 {latest.relative_to(ROOT)} -> v{V}")
+
     print("\n" + "=" * 60)
     print(f"发布包 v{V} —— 一个 Release 装全部（{OUT.relative_to(ROOT)}）")
     print("=" * 60)
