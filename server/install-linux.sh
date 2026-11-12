@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # HeartApp 联机转发服务 · Linux 一键安装（systemd）
 #
-# 在仓库根目录执行：
+# 在仓库根目录执行（默认进入交互向导，密码隐藏输入）：
 #   sudo bash server/install-linux.sh
+#
+# 自动部署（无人值守，密码走环境变量，不要写在命令行里）：
+#   sudo HEARTAPP_INSTALL_PASSWORD='强密码' bash server/install-linux.sh --non-interactive
+#
+# 只想改端口等参数、仍要交互确认密码：
 #   sudo bash server/install-linux.sh --port 9000 --max-clients 50
-#   sudo bash server/install-linux.sh --password '换成你的口令'
 #
 # 安装内容：
 #   代码   /opt/heartapp-relay
@@ -40,7 +44,7 @@ HeartApp Linux 服务端安装器（systemd）
   --max-clients COUNT  总连接上限，默认 20
   --room-size COUNT    每房间人数 1～128，默认 4
   --user NAME          系统运行用户，默认 heartapp
-  --password VALUE     服务器密码；也可安装后修改 /etc/heartapp-relay.env
+  --password VALUE     仅自动化用：命令行传密码会留在 shell 历史里，交互安装直接回车输入
   --non-interactive    自动部署，跳过交互确认；首次必须显式提供密码
   -h, --help           显示帮助，不安装、不需要 root
 

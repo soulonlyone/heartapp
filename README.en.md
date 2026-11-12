@@ -94,8 +94,12 @@ Deploy the server yourself, one line:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
-  | sudo bash -s -- --password 'your-password'
+  | sudo bash
 ```
+
+The installer then asks for a password (**hidden input**), confirms the port and registers a
+systemd service. For unattended deployments use `--non-interactive` with the password in
+`HEARTAPP_INSTALL_PASSWORD` — passing it on the command line leaves it in shell history.
 
 Windows users can use the server panel (GUI). See [server docs](server/README.md).
 

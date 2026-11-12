@@ -10,7 +10,7 @@
 ## 一行部署（Linux）
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
 等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
@@ -33,7 +33,7 @@ curl -fsSL .../server/deploy.sh | sudo bash -s -- --password '口令' --port 900
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
 less deploy.sh
-sudo bash deploy.sh --password '你的口令'
+sudo bash deploy.sh
 ```
 
 服务默认只监听本机 `127.0.0.1:8765`，公网请在前面加 HTTPS / WSS 反向代理。

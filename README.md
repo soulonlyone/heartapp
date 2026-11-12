@@ -86,8 +86,12 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等符合标准即可，不绑定品牌
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
-  | sudo bash -s -- --password '你的口令'
+  | sudo bash
 ```
+
+装的过程中会**隐藏输入密码**、确认端口，然后注册 systemd 服务。
+无人值守部署用 `--non-interactive` 并把密码放进环境变量 `HEARTAPP_INSTALL_PASSWORD`
+（命令行传密码会留在 shell 历史里）。
 
 Windows 可用服务端面板（可视化开服），详见 [服务端文档](server/README.md)。
 

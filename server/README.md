@@ -4,7 +4,8 @@
 只需要 Python 3.9+ 与 `websockets`，也可以直接用免 Python 的独立 exe。
 
 > **English quick start**
-> - One-line Linux: `curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password 'pw'`
+> - One-line Linux: `curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash`
+>   (the wizard asks for a password with hidden input; use `--non-interactive` + `HEARTAPP_INSTALL_PASSWORD` for automation)
 > - Docker: `docker run -d --name heartapp-server -p 127.0.0.1:8765:8765 -e HEARTAPP_RELAY_PASSWORD=pw <image>`
 > - Windows: run `HeartApp-Server-v<ver>-win64.exe --host 0.0.0.0 --port 8765 --password pw`,
 >   or use the GUI panel (`HeartApp-Server-Panel`).
@@ -24,8 +25,11 @@
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
-  | sudo bash -s -- --password '你的口令'
+  | sudo bash
 ```
+
+运行后进入向导：**隐藏输入密码（两次）** → 确认端口 → 确认安装。
+密码不会出现在命令行里，也不会留在 shell 历史。
 
 流程：查最新 Release → 下载服务端包 → **校验 SHA256** → 解压 → 安装。
 代码装到 `/opt/heartapp-relay`（**root 所有，服务用户只读执行**），注册 systemd
