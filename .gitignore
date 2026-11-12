@@ -85,3 +85,11 @@ server/app/
 _deploy-backup/
 server/compose.rollback.yaml
 server/.env
+
+# 临时消息 / 日志文件（避免误提交）
+_m.txt
+_msg.txt
+_*.log
+_relnotes.md
+_ci*.log
+_up.log
