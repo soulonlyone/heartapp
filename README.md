@@ -39,9 +39,14 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等只要符合标准都能用，不绑
 
 ### 1 · 下载
 
-去 [**Releases**](https://github.com/soulonlyone/heartapp/releases/latest) 下载
-`HeartApp-<版本>-win64.exe`（单文件，双击即用）。
+去 [**Releases**](https://github.com/soulonlyone/heartapp/releases/latest) 下载：
 
+| 文件 | 说明 |
+|---|---|
+| **`HeartApp-<版本>-win64-portable.zip`** | **推荐**：解压到任意可写目录，双击 `图形界面版\心率记录仪.exe` |
+| `HeartApp-<版本>-win64.exe` | 单文件版，一个 exe 搞定；每次启动要解压，稍慢 |
+
+> 便携版不用解包、启动更快，文件夹里只有你自己的 `data`。
 > 首次运行 SmartScreen 可能提示，点「更多信息」→「仍要运行」（自签名证书，见 [签名说明](docs/签名说明.md)）。
 
 ### 2 · 打开手表的心率广播
