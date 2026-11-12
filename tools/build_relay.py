@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import shutil
 import subprocess
 import sys
@@ -98,8 +99,13 @@ def _add(tar: tarfile.TarFile, source: Path, arcname: str, mode: int = 0o644) ->
     info.mode = mode
     info.uid = info.gid = 0
     info.uname = info.gname = "root"
-    with source.open("rb") as handle:
-        tar.addfile(info, handle)
+    data = source.read_bytes()
+    if arcname.endswith(".sh"):
+        # 工作区在 Windows 上可能是 CRLF；bash 遇到 \r 会报 "$'\r': command not found"。
+        # 这里强制规范成 LF，保证解压后能直接执行。
+        data = data.replace(b"\r\n", b"\n")
+    info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
     print(f"    + {arcname}")
 
 

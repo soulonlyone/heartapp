@@ -148,8 +148,12 @@ if [ -n "$EXPECTED" ] && [ -n "$SHA_TOOL" ]; then
     fi
     [ "$EXPECTED" = "$ACTUAL" ] || die "SHA256 校验失败，文件可能损坏或被篡改"
     say "SHA256 校验通过"
+elif [ -z "$SHA_TOOL" ]; then
+    say "跳过 SHA256 校验：系统没有 sha256sum / shasum"
+elif [ -z "${EXPECTED:-}" ]; then
+    say "跳过 SHA256 校验：没取到 SHA256SUMS.txt，或文件里没有 ${ASSET}"
 else
-    say "跳过 SHA256 校验（没取到校验和或缺校验工具）"
+    say "跳过 SHA256 校验"
 fi
 
 # ---- 解压 ----
