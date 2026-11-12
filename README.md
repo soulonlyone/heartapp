@@ -15,6 +15,16 @@
 
 ![多人对比](docs/images/screenshot-multiplayer.png)
 
+<details>
+<summary>展开看：单机实时 / 小窗设置 / 联机大厅 / 历史回看</summary>
+
+![单机实时](docs/images/screenshot-live.png)
+![小窗设置](docs/images/screenshot-overlay.png)
+![联机大厅](docs/images/screenshot-lobby.png)
+![历史回看](docs/images/screenshot-history.png)
+
+</details>
+
 ## 这是什么
 
 | 概念 | 说明 |

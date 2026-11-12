@@ -17,6 +17,16 @@ to a self-hosted server so friends see each other's heart rate on one chart.
 
 ![Multiplayer comparison](docs/images/screenshot-multiplayer.png)
 
+<details>
+<summary>More screenshots: live / overlay settings / lobby / history</summary>
+
+![Live](docs/images/screenshot-live.png)
+![Overlay settings](docs/images/screenshot-overlay.png)
+![Lobby](docs/images/screenshot-lobby.png)
+![History](docs/images/screenshot-history.png)
+
+</details>
+
 ## What it is
 
 | Concept | Meaning |

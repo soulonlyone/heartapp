@@ -26,6 +26,8 @@ drag the title area to move, double-click to maximize, resize from any edge.
 - Gaps break the curve — long records are never drawn as fake straight lines
 - Hovering shows the real sample timestamp
 
+![History](images/screenshot-history.png)
+
 ## Storage & saving
 
 Records live in **`data\heartrate.db` next to the executable** (SQLite); the status bar
