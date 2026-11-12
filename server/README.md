@@ -1,313 +1,164 @@
-# HeartApp 联机转发服务
+# HeartApp 联机服务端
 
-独立、可自部署的 WebSocket 转发服务，用来支持「联机房间」功能。
-不需要中央账号或公共服务器——所有参与者连接同一台你自己部署的服务端。
+可自部署的 WebSocket 转发服务，支撑「联机房间」。**不含 GUI / BLE / 数据库**，
+只需要 Python 3.9+ 与 `websockets`，也可以直接用免 Python 的独立 exe。
 
-**无界面转发核心不包含 GUI、BLE 和数据库**，只需要 Python 3.9+ 与 `websockets`。
-它可以只部署 4 个文件运行，不需要在服务器上装 Qt。
+> **English quick start**
+> - One-line Linux: `curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password 'pw'`
+> - Docker: `docker run -d --name heartapp-server -p 127.0.0.1:8765:8765 -e HEARTAPP_RELAY_PASSWORD=pw <image>`
+> - Windows: run `HeartApp-Server-v<ver>-win64.exe --host 0.0.0.0 --port 8765 --password pw`,
+>   or use the GUI panel (`HeartApp-Server-Panel`).
+> - Clients connect with `ws://<host>:8765` (LAN) or `wss://<domain>` (public, behind TLS).
+> - The server stores **no heart-rate history**; rooms/tokens live in memory only.
+> - Full details below are in Chinese.
 
-Windows 新增可视化控制面板，可启动/停止、设置密码、复制地址及收起到托盘。
-三端操作说明：[Windows 面板](Windows面板说明.md) · [Linux](Linux说明.md) · [Docker](Docker说明.md)。
-面板源码入口为根目录 `启动服务端面板.bat`，独立打包入口为 `tools/build_server_panel.py`。
-此面板及上一轮分发修复尚未替换旧版 Release 附件。
+## 三种部署方式
 
-Linux/Docker 独立说明已覆盖环境安装、首次部署、配置、验收、运维、升级回退和卸载。
-命令行帮助：`python -m heartapp.relay --help`、`bash server/install-linux.sh --help`；
-独立 Docker 压缩包解压后使用 `sh build_and_run.sh --help`。查看帮助不会启动或安装服务。
+| 方式 | 适合 | 入口 |
+|---|---|---|
+| **Linux 一行** | VPS、长期后台 | 本页「一行部署」 |
+| **Docker** | 已有 Compose 的机器 | `compose.yaml` + `Dockerfile` |
+| **Windows** | 本机 / 局域网 | 独立 exe 或服务端面板 |
 
 ## 一行部署（Linux）
 
-先在服务器准备好 Python 3.9+、venv、curl 和 tar，使用 SSH 终端执行。
-
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
+  | sudo bash -s -- --password '你的口令'
 ```
 
-安装向导会依次提示设置密码（隐藏输入并再次确认）、选择端口（默认 8765）、
-确认安装。确认后下载包中的安装器会创建运行用户、虚拟环境和 systemd 服务，
-安装到 `/opt/heartapp-relay` 并开机启动。密码保存在权限为 600 的
-`/etc/heartapp-relay.env`，屏幕上不会回显密码。
+流程：查最新 Release → 下载服务端包 → **校验 SHA256** → 解压 → 安装。
+代码装到 `/opt/heartapp-relay`（**root 所有，服务用户只读执行**），注册 systemd
+服务 `heartapp-relay`，配置写到 `/etc/heartapp-relay.env`（权限 600）。
 
-再次安装会读取已有配置。密码与端口处直接回车可保留原值，确认后重启服务。
-取消安装会保留原配置。服务重启会清空内存中的临时房间。
-
-安装后运行管理菜单。
+参数原样转发：`--port` / `--max-clients` / `--room-size` / `--version` / `--dry-run`。
 
 ```sh
-sudo heartapp-server
+# 换端口和容量
+... | sudo bash -s -- --password '口令' --port 9000 --max-clients 50 --room-size 8
+# 只看会做什么，不真装
+... | sudo bash -s -- --dry-run --password '口令'
 ```
 
-菜单支持查看状态、启动、停止、重启、修改密码、修改端口和查看最近日志。
-修改密码或端口时，确认保存后才重启。修改端口还需同步调整防火墙、云安全组、
-反向代理和客户端地址。
+不放心管道安装，先下载检查：`curl -fsSLO .../deploy.sh && less deploy.sh && sudo bash deploy.sh`。
 
-默认监听 `0.0.0.0:8765`，朋友可填写 `ws://服务器IP:8765`。
-位于家庭路由器后的服务器需要端口转发；公网加 TLS 反向代理后使用 `wss://域名`。
-可用 `--host 127.0.0.1` 预设仅本机监听。
+装好之后用管理菜单：
 
 ```sh
-# 指定版本并进入向导
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --version v<版本>
-
-# 只下载解压，不安装
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --dry-run
-```
-
-自动化部署可加 `--non-interactive`。首次必须提供 `--password`，后续默认沿用旧配置。
-密码参数可能出现在 shell 历史和进程列表中，手动安装请使用默认向导。
-
-也可以下载后检查脚本，再运行。
-
-```sh
-curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
-less deploy.sh
-sudo bash deploy.sh
-```
-
-此交互流程需要包含 `server/manage-linux.py` 的新版 Linux Release。
-旧版发布包需更新后才能使用本流程。
-
-
-## 直接下载现成的包
-
-不想克隆仓库？到 [最新发布页](https://github.com/soulonlyone/heartapp/releases/latest) 下载（客户端与服务端在同一个 Release）：
-
-| 文件 | 用途 |
-|---|---|
-| `HeartApp-Server-v<版本>-win64.exe` | **Windows 独立服务端，不需要装 Python**，直接跑 |
-| `HeartApp-Server-v<版本>-linux.tar.gz` | Linux 源码包，解压后 `sudo bash server/install-linux.sh` |
-| `HeartApp-Server-v<版本>-docker.tar.gz` | Docker 构建包，解压后 `sh build_and_run.sh` |
-| `SHA256SUMS.txt` | 三个文件的 SHA256 校验和 |
-
-Windows exe 直接在命令行跑：
-
-```bat
-HeartApp-Server-v<版本>-win64.exe --host 0.0.0.0 --port 8765 --password 你的口令
-```
-
-首次运行可能弹 SmartScreen，点「更多信息」→「仍要运行」（自签名证书，见[签名说明](../docs/签名说明.md)）。
-它会解压到 exe 旁边，请放在**可写目录**，不要放 `C:\Program Files`、不要用管理员运行。
-
----
-
-| 想用哪种方式 | 跳到 |
-|---|---|
-| Docker（最省事） | [Docker](#docker) |
-| Linux 一键安装（systemd） | [Linux](#linux-systemd) |
-| Windows 一键安装（开机自启） | [Windows](#windows) |
-| 任意系统手动前台运行 | [手动运行](#手动运行) |
-
----
-
-## 需要准备什么
-
-- 一台能被参与者访问到的服务器（公网 VPS、公司内网机器、或就是你自己这台电脑）
-- 能装 Python 3.9+ 或 Docker
-- 一个想用的端口，默认 `8765`
-
-## Docker
-
-```sh
-cd server
-cp .env.example .env          # 按需改端口 / 密码 / 连接上限
-docker compose up -d --build
-docker compose ps
-docker compose logs --tail=20
-```
-
-- 默认只映射**服务器本机**的 `127.0.0.1:8765`，建议前面加 HTTPS 反代（见[公网](#公网与-tls)）
-- 最多 20 个连接、0.5 核 / 384 MiB 上限、日志轮转、只读根文件系统、丢弃全部 capabilities
-- 容器以普通用户运行，不挂载任何个人数据
-- 停止：`docker compose down`
-
-想让局域网其他机器直连，把 `.env` 里的 `HEARTAPP_BIND_IP` 改成 `0.0.0.0`
-（这时就没有反向代理兜底了，请确保设置了访问密码）。
-
-镜像目前是**源码构建**，没有发布到镜像仓库。
-
-## Linux (systemd)
-
-一键安装，会在 `/opt/heartapp-relay` 建立独立运行环境并注册服务。只在**仓库里**执行：
-
-```sh
-sudo bash server/install-linux.sh
-```
-
-常用变体：
-
-```sh
-sudo bash server/install-linux.sh --port 9000 --max-clients 50
-sudo bash server/install-linux.sh --password '换成你的口令'
-sudo bash server/install-linux.sh --user heartapp --room-size 4
-```
-
-它会做这些事：
-
-| 项目 | 位置 |
-|---|---|
-| 运行代码（只复制 4 个文件） | `/opt/heartapp-relay/heartapp/` |
-| 虚拟环境 + 依赖 | `/opt/heartapp-relay/venv/` |
-| 配置（含访问密码，权限 600） | `/etc/heartapp-relay.env` |
-| systemd 单元 | `/etc/systemd/system/heartapp-relay.service` |
-
-安装完成后：
-
-```sh
+sudo heartapp-server          # 启停服务、看日志、改密码、改端口、改每房容量
 systemctl status heartapp-relay
-systemctl restart heartapp-relay      # 改完密码 env 后重启
 journalctl -u heartapp-relay -f
-curl http://127.0.0.1:8765/healthz    # HeartApp relay v2 OK
+curl http://127.0.0.1:8765/healthz     # HeartApp relay v2 OK
 ```
-
-服务默认监听 `0.0.0.0:8765`，并以独立系统用户运行（`NoNewPrivileges`、
-只读文件系统、私有 /tmp 等加固项已内置）。
 
 卸载：
 
 ```sh
 sudo systemctl disable --now heartapp-relay
-sudo rm -rf /opt/heartapp-relay /etc/heartapp-relay.env \
-            /etc/systemd/system/heartapp-relay.service
-sudo systemctl daemon-reload
+sudo rm -rf /opt/heartapp-relay /etc/heartapp-relay.env /etc/systemd/system/heartapp-relay.service
+sudo rm -f /usr/local/bin/heartapp-server && sudo systemctl daemon-reload
 ```
+
+## Docker
+
+```sh
+cd server
+cp .env.example .env          # 改端口 / 密码 / 连接上限 / 每房容量
+docker compose up -d --build
+docker compose logs --tail=20
+```
+
+默认只映射 `127.0.0.1:8765`，限制 0.5 核 / 384 MiB、日志轮转、只读根文件系统、丢弃全部
+capabilities。想让局域网直连就把 `HEARTAPP_BIND_IP` 改成 `0.0.0.0`（记得设密码）。
 
 ## Windows
 
-**第一步：安装**（双击即可）
+- **独立 exe**（不需要 Python）：`HeartApp-Server-v<版本>-win64.exe --host 0.0.0.0 --port 8765 --password pw`
+- **可视化面板**：解压 `HeartApp-Server-Panel-v<版本>-win64.zip`，双击运行，可启停、设密码、
+  复制地址、显示在线人数、最小化到托盘。退出时只停自己启动的实例。
+- **开机自启**：管理员 PowerShell 运行 `server\service-windows.ps1 -Install`（计划任务，SYSTEM 运行）。
+- 需要把 exe 放在可写目录，不要放 `C:\Program Files`，不要用管理员运行。
 
-```
-server\install-windows.bat
-```
-
-它会创建 `server\.venv`、把服务端 4 个文件复制到 `server\app\`、安装依赖，
-并在管理员权限下自动放行防火墙 TCP 8765。
-
-**第二步：选一种运行方式**
-
-| 方式 | 操作 | 适合 |
-|---|---|---|
-| 前台运行（调试） | `server\run-relay.bat` 或 `server\run-relay.bat 你的密码` | 临时用、排错 |
-| 开机自启（推荐） | 见下方 | 长期运行 |
-
-开机自启用**系统计划任务**（不需要 NSSM 之类的外部工具），用管理员 PowerShell：
-
-```powershell
-cd server
-powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Install
-powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Install -Password "口令" -Port 9000
-
-powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Status
-powershell -ExecutionPolicy Bypass -File service-windows.ps1 -Remove
-```
-
-- 任务以 `SYSTEM` 运行，开机自动启动，失败自动重试 3 次
-- 启动脚本里可能含访问密码，已通过 `icacls` 限制为仅 SYSTEM / Administrators 可读
-- 启动器为带 UTF-8 BOM 的 `server/app/service-run.ps1`，支持中文密码和中文路径。
-  从旧版升级后需重新执行 `service-windows.ps1 -Install`，才能更新已注册任务的启动入口。
-- 客户端填写 `ws://这台电脑的IP:8765`
-
-## 手动运行
-
-任意系统，装好 Python 3.9+ 和依赖后：
+## 手动运行（任意系统）
 
 ```sh
 pip install -r server/requirements.txt
-python -m heartapp.relay --host 0.0.0.0 --port 8765
+python -m heartapp.relay --host 0.0.0.0 --port 8765 --password '口令'
 ```
-
-参数：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `--host` | `127.0.0.1` | 监听地址；局域网/公网要 `0.0.0.0`，IPv6 用 `::` |
-| `--port` | `8765` | 监听端口 |
+| `--host` | `127.0.0.1` | 局域网/公网要 `0.0.0.0`；IPv6 用 `::` |
+| `--port` | `8765` | |
 | `--max-clients` | `100` | 总连接上限（1–10000） |
-| `--room-size` | `4` | 每房间容量（1–128，受总连接上限约束） |
-| `--cert` / `--key` | 无 | 直接启用 TLS，两个必须一起给 |
+| `--room-size` | `4` | 每房人数（1–128，受总上限约束） |
+| `--cert` / `--key` | 无 | 直接启用 TLS，必须一起给 |
 
-访问密码走环境变量：
-
-```sh
-HEARTAPP_RELAY_PASSWORD='口令' python -m heartapp.relay --host 0.0.0.0
-```
+密码也可用环境变量 `HEARTAPP_RELAY_PASSWORD`（长期运行的服务建议用环境变量，
+避免密码出现在进程命令行里）。
 
 ## 客户端怎么填
 
-客户端「实时」页 →「联机房间」：
-
-| 场景 | 服务器地址 |
+| 场景 | 地址 |
 |---|---|
 | 同一台电脑 | `ws://127.0.0.1:8765` |
 | 局域网 | `ws://192.168.1.20:8765` |
 | IPv6 | `ws://[2001:db8::1]:8765` |
 | 公网（有反代） | `https://hr.example.com` 或 `wss://hr.example.com` |
 
-填写昵称、地址、密码（服务端设了才需要）→「登录服务器」。
-登录后下方显示同服房间，可以创建房间、从列表加入、或输入 8 位房间码加入。
-
-本机双开测试时给两个客户端用不同数据库：
-
-```sh
-python -m heartapp --db data/player1.db
-python -m heartapp --db data/player2.db
-```
+客户端支持 `IP:端口` / `域名:端口` 简写：带非 443 端口按 `ws://` 连，要 TLS 就写明 `wss://`。
 
 ## 公网与 TLS
 
-客户端**只信任系统证书**，没有"忽略证书错误"的开关。`ws://` 只适合本机或可信局域网。
+客户端**只信任系统证书**，没有「忽略证书错误」的开关；`ws://` 只适合本机或可信局域网。
 
-推荐用已有的 Nginx / Caddy 终止 TLS，反代到 `127.0.0.1:8765`，
-Nginx 片段见 [`nginx.conf.example`](nginx.conf.example)。要点：
+建议用 Nginx / Caddy 终止 TLS 再反代到 `127.0.0.1:8765`，片段见 `nginx.conf.example`。要点：
 
 - 必须转发 `Upgrade` / `Connection` 头
-- `proxy_read_timeout` 不要太小（客户端每 20 秒 ping 一次）
+- `proxy_read_timeout` 别太小（客户端每 20 秒 ping 一次）
 - 反代后所有来源 IP 会变成同一个，**共用每分钟 30 次的连接尝试限额**
 
-也可以让服务端自己带证书：`--cert fullchain.pem --key privkey.pem`。
+也可以让服务端自带证书：`--cert fullchain.pem --key privkey.pem`。
 
 ## 协议与资源边界
 
-- **协议 v2**：登录服务器与创建 / 加入 / 退出房间分离。客户端与服务端必须一起升级，
-  版本不兼容时会明确提示。v1 不再兼容。
-- 每房间默认 **4 人**，可由服务器调整；客户端每秒发一次当前心率，**关闭共享时不发送数值**。
+- **协议 v2**：登录服务器与创建/加入/退出房间分离；客户端与服务端需一起升级，
+  版本不兼容会明确提示。新客户端可连旧服务端。
+- 每房容量默认 4，服务端可设 1–128；客户端每秒发一次心率，**关闭共享时不发送数值**。
 - 断流 5 秒后数值为空，不把旧值当实时；模拟来源保留标识。
-- 主动退房 / 退出服务器立即移除成员，无成员房间删除。
-  网络断开保留 **30 秒重连席位**，凭仅在内存的随机会话令牌恢复原身份和房间。
-- 单条入站消息最多 **2 KiB**，限制消息频率、总连接数和连接尝试；
-  发送缓冲有上限，慢连接会被关闭。
-- **同一来源 IP 每分钟最多 30 次**连接尝试。经反代时共用该限额，只适合小规模私人部署。
+- 主动退房立即移除成员，无成员房间删除；网络断开保留 **30 秒重连席位**，
+  凭仅在内存的随机会话令牌恢复原身份。
+- 单条入站消息最多 2 KiB，限制消息频率、连接数与连接尝试；慢连接会被关闭。
+- **同一 IP 每分钟最多 30 次**连接尝试；经反代时共用该限额。
 - **服务端不保存心率历史**，日志不输出房间码或心率；健康检查 `GET /healthz`。
-- 房间目录最多返回前 100 个房间，每 5 秒自动更新。
-- 空闲 / 重连会话只存内存，断开后最多保留 30 秒；总会话数最多为连接上限的两倍。
-- 不提供：共享历史、语音视频、房主踢人、端到端加密、多实例房间同步。
+- 房间目录最多返回前 100 个房间，每 5 秒更新。
+- 不提供：共享历史、语音视频、房主踢人、端到端加密、多实例同步。
 
-**客户端侧的边界**：多人曲线只保留内存最多 30 分钟，退出房间清空，不写入本地历史；
-曲线包含设备与网络延迟，不代表逐拍精确同步；个人记录 / 导出始终只含本人数据。
+**客户端侧**：多人曲线只在内存保留最多 30 分钟，退出清空，不写入本地历史；
+曲线含设备与网络延迟，不代表逐拍同步；个人记录/导出只含本人数据。
 
-服务端运营者可以接触经过它转发的心率——**请只连接你信任的服务端**。
-房间码只是定位符，不是房间密码；同服已登录用户都能浏览并加入未满的房间。
+服务端运营者可以接触经过它转发的心率——**只连接你信任的服务端**。
+房间码只是定位符，不是房间密码。
 
 ## 容量参考
 
-2C2G 的机器建议先从 **20 个连接**起步（Docker Compose 里已按此设置资源上限）。
-以上都是配置上限，**不是已验证的公网容量**——尚未做压测。
-
-家庭宽带能否公网访问取决于是否被 CGNAT；域名不会自动解决这个问题，动态 IP 可以配 DDNS。
+2C2G 机器建议先从 **20 个连接**起步。以上都是配置上限，**不是已验证的公网容量**（未压测）。
+家庭宽带能否公网访问取决于是否被 CGNAT，域名不会自动解决。
 
 ## 排障
 
 | 现象 | 排查 |
 |---|---|
-| 客户端提示连不上 | 服务是否在跑：`curl http://127.0.0.1:8765/healthz` |
-| 局域网其他机器连不上 | 监听地址是否 `0.0.0.0`；防火墙是否放行 TCP 端口 |
-| 公网连不上 | 反代是否转发 `Upgrade` 头；安全组 / 云防火墙是否放行 |
-| 提示协议版本不兼容 | 客户端与服务端版本不一致，一起升级 |
-| 登录提示密码错误 | 服务端 `HEARTAPP_RELAY_PASSWORD` 与客户端填写不一致 |
-| 房间列表是空的 | 正常：没有房间时为空，或你的服务器还没有人创建过 |
+| 客户端连不上 | `curl http://127.0.0.1:8765/healthz` 看服务是否在跑 |
+| 局域网其他机器连不上 | 是否 `--host 0.0.0.0`；防火墙是否放行端口 |
+| 公网连不上 | 反代是否转发 `Upgrade`；安全组/云防火墙 |
+| 版本不兼容 | 两端一起升级 |
+| 密码错误 | `HEARTAPP_RELAY_PASSWORD` 与客户端填写不一致 |
+| 房间列表为空 | 正常：还没人创建房间 |
 
-## 合并与验证状态
+## 验证状态
 
-合并说明与验证记录见 [main 合并交接说明](../docs/merge-handoff.md)。
+已验证：Python 本机转发、双客户端联机冒烟（共享开关、退房、断线重连、服务故障不影响本地记录）、
+Windows 独立 exe 启动与密码校验、GitHub Actions CI 全绿。
 
-已验证：Python 本机转发、双客户端联机冒烟（共享开关、退房、断线重连、服务故障不影响本地记录）。
-**未验证**：Docker 镜像构建运行、公网 WSS + 证书 + 反代超时、压力测试。
+**未验证**：真实 systemd 环境的首次安装/升级、Docker 镜像构建运行、公网 WSS + 证书 + 反代超时、压测。
