@@ -114,8 +114,14 @@ def terminal():
 
 
 def read_password(existing=''):
+    # 这是「客户端登录服务器」用的访问密码，不是房间密码；安装时必须设置。
+    prompt = (
+        '服务器访问密码（客户端在「联机房间」登录时填它；输入时不显示，直接回车保留原密码）：'
+        if existing
+        else '服务器访问密码（客户端在「联机房间」登录时填它；输入时不显示）：'
+    )
     while True:
-        value = getpass.getpass('设置访问密码（输入隐藏，回车保留现有密码）：' if existing else '设置访问密码（输入隐藏）：')
+        value = getpass.getpass(prompt)
         if not value and existing:
             return existing
         candidate = dict(DEFAULTS, password=value)
@@ -124,7 +130,7 @@ def read_password(existing=''):
         except ValueError as exc:
             print(exc)
             continue
-        if value == getpass.getpass('再次输入密码：'):
+        if value == getpass.getpass('再输入一次确认：'):
             return value
         print('两次密码不一致，请重新输入。')
 
@@ -156,10 +162,12 @@ def configure(args):
     if not args.non_interactive:
         with terminal():
             print('\nHeartApp 服务端安装向导')
+            print('这个密码用于客户端登录本服务器（不是房间密码），所有联机的人都要填同一个。')
             settings['password'] = read_password(settings['password'])
             settings['port'] = read_number(settings, 'port', '服务端口')
             validate(settings)
-            print(f"\n监听地址 {settings['host']}，端口 {settings['port']}，访问密码已设置。")
+            print(f"\n监听地址 {settings['host']}，端口 {settings['port']}。")
+            print('访问密码已设置——客户端登录服务器时填它。')
             print('安装或升级会重启服务，现有临时房间会清空。')
             if not confirm('确认安装并启动服务？'):
                 print('已取消，原配置保留。')
@@ -179,7 +187,7 @@ def menu():
         while True:
             settings = load_settings()
             print(f"\nHeartApp 服务端 · 端口 {settings['port']}")
-            print('1 查看状态   2 启动   3 停止   4 重启\n5 修改密码   6 修改端口   7 查看最近日志   8 修改每房人数   0 退出')
+            print('1 查看状态   2 启动   3 停止   4 重启\n5 修改访问密码   6 修改端口   7 查看最近日志   8 修改每房人数   0 退出')
             choice = input('请选择：').strip()
             try:
                 if choice == '0':

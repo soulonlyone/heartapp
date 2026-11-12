@@ -28,8 +28,11 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
   | sudo bash
 ```
 
-运行后进入向导：**隐藏输入密码（两次）** → 确认端口 → 确认安装。
-密码不会出现在命令行里，也不会留在 shell 历史。
+运行后进入向导：**设置服务器访问密码（输入时不显示，输两次）** → 确认端口 → 确认安装。
+
+> 这个密码是**客户端在「联机房间」登录服务器时填的那个**，不是房间密码；
+> 所有联机的人共用同一个，安装时必须设置（不能为空）。
+> 密码不会出现在命令行里，也不会留在 shell 历史。
 
 流程：查最新 Release → 下载服务端包 → **校验 SHA256** → 解压 → 安装。
 代码装到 `/opt/heartapp-relay`（**root 所有，服务用户只读执行**），注册 systemd
