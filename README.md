@@ -116,8 +116,11 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
 
 ## 数据在哪
 
-普通单文件版把记录和设置保存在 `%LOCALAPPDATA%\HeartApp\heartrate.db`（SQLite）。更换 EXE 后仍使用同一份记录。
-便携 ZIP 解压后，记录保存在所运行的 EXE 旁边的 `data` 目录，移动时请保留整个便携文件夹。
+记录存在**程序目录下的 `data\heartrate.db`**（SQLite）——便携版、单文件版都一样，
+不会在你的用户目录里另建文件。移动或更新程序时，把整个文件夹一起带走就行。
+
+只有程序目录不可写时（装在 `Program Files`、只读 U 盘），才会退回
+`%LOCALAPPDATA%\HeartApp`；界面底栏会显示实际路径。
 
 新版单文件图形界面可从 EXE 旁的旧 `data` 目录复制数据库。若两处都有数据库，启动时可选择打开哪份，原文件会保留。
 如果新版 EXE 放在别处，可先把它放到旧 EXE 所在目录再启动，或用 `--db "完整路径"` 打开旧数据库。
