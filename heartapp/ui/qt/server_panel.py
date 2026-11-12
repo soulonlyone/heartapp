@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import __version__
+from ...room_protocol import MAX_ROOM_SIZE
 from ...server_control import ServerController, ServerSettings, load_settings, save_settings
 from .chrome import FramelessWindow, TitleBar
 from .editorial import Button, CapsuleCombo, INK, MUTED, PAPER, RED, RULE, ensure_light_palette, label, serif
@@ -147,7 +148,7 @@ class ServerPanel(FramelessWindow):
         self.scope.setCurrentIndex(0 if self.settings.scope == "lan" else 1)
         self.port = self._spin(1, 65535, self.settings.port)
         self.max_clients = self._spin(1, 10000, self.settings.max_clients)
-        self.room_size = self._spin(1, 4, self.settings.room_size)
+        self.room_size = self._spin(1, MAX_ROOM_SIZE, self.settings.room_size)
         for column, (title, widget) in enumerate((("监听范围", self.scope), ("服务端口", self.port),
                                                  ("连接人数上限", self.max_clients), ("每房间人数", self.room_size))):
             grid.addWidget(label(title, 12, True), 0, column)

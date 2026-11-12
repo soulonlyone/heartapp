@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # HeartApp 服务端 · 一行安装（Linux / systemd）
 #
-#   curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
+#   curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 #
 # 建议先看清楚再执行（推荐）：
 #
 #   curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
 #   less deploy.sh
-#   sudo bash deploy.sh --password '你的口令'
+#   sudo bash deploy.sh
 #
 # 参数（全部可选）：
-#   --password <口令>    设置访问密码；不设则任何人都能登录
+#   默认进入交互向导：隐藏输入密码 → 选择端口 → 确认安装
+#   --password <口令>    自动部署时预设访问密码
+#   --non-interactive    自动部署，首次必须显式提供密码
 #   --port <端口>        默认 8765
 #   --max-clients <N>    默认 20
 #   --room-size <N>      默认 4
@@ -34,13 +36,21 @@ die() { printf '错误：%s\n' "$*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --version) VERSION="$2"; shift 2 ;;
+        --version) [ $# -ge 2 ] || die "--version 需要一个值"; VERSION="$2"; shift 2 ;;
+        --non-interactive) ARGS+=("$1"); shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --password|--port|--max-clients|--room-size|--host|--user)
             [ $# -ge 2 ] || die "$1 需要一个值"
             ARGS+=("$1" "$2"); shift 2 ;;
         -h|--help)
-            sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+            cat <<'HELP'
+HeartApp Linux 一行部署
+用法：curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
+默认在控制终端进入安装向导，按提示设置密码和端口并确认安装。
+--version TAG 指定 Release；--dry-run 只下载解压；--non-interactive 用于自动部署。
+可传 --password、--port、--host、--max-clients、--room-size、--user。
+安装后运行 sudo heartapp-server 打开管理菜单。
+HELP
             exit 0 ;;
         *) die "未知参数 $1（--help 查看用法）" ;;
     esac
@@ -104,6 +114,7 @@ tar -xzf "$TMP/$ASSET" -C "$TMP" || die "解压失败"
 SRC="$(find "$TMP" -maxdepth 2 -type d -name 'heartapp-server-*' | head -1)"
 [ -n "$SRC" ] || die "压缩包结构异常：找不到 heartapp-server-* 目录"
 [ -f "$SRC/server/install-linux.sh" ] || die "压缩包里没有 server/install-linux.sh"
+[ -f "$SRC/server/manage-linux.py" ] || die "该 Release 尚未包含交互向导，请指定新版 Linux 服务端 Release"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     say "dry-run：下载与校验通过，未执行安装"

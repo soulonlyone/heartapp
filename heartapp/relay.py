@@ -12,7 +12,7 @@ from typing import Optional
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.http11 import Request, Response
 
-from .room_protocol import VERSION
+from .room_protocol import DEFAULT_ROOM_SIZE, MAX_ROOM_SIZE, VERSION
 from . import __version__
 from .lobby import Relay
 
@@ -68,7 +68,8 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1", help="监听地址；局域网直连用 0.0.0.0（默认：%(default)s）")
     parser.add_argument("--port", type=int, default=8765, help="监听端口（默认：%(default)s）")
     parser.add_argument("--max-clients", type=int, default=100, help="总连接上限 1～10000；小型部署建议 20（默认：%(default)s）")
-    parser.add_argument("--room-size", type=int, default=4, help="每房间人数 1～4（默认：%(default)s）")
+    parser.add_argument("--room-size", type=int, default=os.getenv("HEARTAPP_ROOM_SIZE", str(DEFAULT_ROOM_SIZE)),
+                        help=f"每房间人数 1～{MAX_ROOM_SIZE}（默认：%(default)s）")
     parser.add_argument("--cert", help="TLS 证书文件")
     parser.add_argument("--key", help="TLS 私钥文件")
     parser.add_argument(
@@ -77,8 +78,8 @@ def main() -> None:
              "长期运行的服务建议用环境变量，避免密码出现在进程命令行里",
     )
     args = parser.parse_args()
-    if not 1 <= args.room_size <= 4 or not 1 <= args.max_clients <= 10000:
-        parser.error("房间人数应为 1～4，总连接上限应为 1～10000")
+    if not 1 <= args.room_size <= MAX_ROOM_SIZE or not 1 <= args.max_clients <= 10000:
+        parser.error(f"房间人数应为 1～{MAX_ROOM_SIZE}，总连接上限应为 1～10000")
     if bool(args.cert) != bool(args.key):
         parser.error("--cert 与 --key 必须同时提供")
     # 不记录 WebSocket 消息、昵称、房间码或心率。

@@ -11,12 +11,45 @@
 from __future__ import annotations
 
 import csv
+import errno
+import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+
+class RecordingAlreadyOpenError(RuntimeError):
+    """数据库已有另一个录制实例。"""
+
+
+@contextmanager
+def recording_lock(db_path: Path) -> Iterator[None]:
+    """录制与恢复共用进程锁。退出或崩溃时系统释放锁，锁文件保留。"""
+    db_path = db_path.resolve()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = db_path.with_name(db_path.name + ".recording.lock")
+    with lock_path.open("a+b") as lock_file:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                raise
+            raise RecordingAlreadyOpenError(
+                f"这份数据库已被另一个 HeartApp 录制实例打开。请先关闭它。\n{db_path}"
+            ) from exc
+        yield
+
 
 SCHEMA_VERSION = 2
 
@@ -434,6 +467,12 @@ class HeartRateStore:
                 "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, str(value))
             )
             self._conn.commit()
+
+    def set_settings(self, values: Dict[str, str]) -> None:
+        with self._lock, self._conn:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", values.items()
+            )
 
     def get_int_setting(self, key: str, default: int) -> int:
         raw = self.get_setting(key)

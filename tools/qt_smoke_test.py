@@ -68,6 +68,12 @@ def overlay_visible() -> bool:
 try:
     print("[1] 窗口构建")
     pump(1.2)
+    if window._record_btn.text() != "连接手表":
+        problems.append("首次启动时主按钮未引导连接")
+    window._record_btn.click()
+    if not window._connection_dialog.isVisible():
+        problems.append("主按钮未打开连接面板")
+    window._connection_dialog.hide()
     print(f"    尺寸 {window.width()}x{window.height()}")
     if not window.windowFlags() & Qt.WindowType.FramelessWindowHint:
         problems.append("主窗口仍有系统边框")
@@ -102,7 +108,9 @@ try:
         problems.append("模拟源没有启动")
 
     print("[3] 开始记录")
-    window.on_record_toggle()
+    if window._record_btn.text() != "开始记录":
+        problems.append("连接后主按钮未切换为开始记录")
+    window._record_btn.click()
     pump(2.0)
     window.on_overlay_toggle()
     if not window._overlay.isVisible():
@@ -185,8 +193,12 @@ try:
         problems.append(f"落库条数过少: {count}")
 
     print("[6] 历史页")
-    window._tabbar.select(1)
+    if not window._view_record_btn.isVisible():
+        problems.append("停止记录后未显示查看本次记录入口")
+    window._view_record_btn.click()
     pump(1.0)
+    if window._stack.currentIndex() != 1 or window._selected_session_id != sid:
+        problems.append("查看本次记录未定位到刚结束的会话")
     print("    行数:", window.tree.rowCount())
     if window.tree.rowCount() == 0:
         problems.append("历史列表为空")
@@ -195,6 +207,13 @@ try:
         pump(1.0)
         if not window.history_chart.points:
             problems.append("历史曲线没有数据点")
+        else:
+            first_sample = next(
+                sample for sample in store.session_samples(sid)
+                if sample.bpm > 0 and sample.contact is not False
+            )
+            if not window.history_chart._hover_text(0).startswith(f"{first_sample.ts:%Y-%m-%d %H:%M:%S}\n"):
+                problems.append("历史曲线悬停读数缺少实际采样时间")
         print("    历史图点数:", len(window.history_chart.points))
         if not store.pc_context(sid):
             problems.append("PC 会话元数据未保存")

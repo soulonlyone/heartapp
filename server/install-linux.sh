@@ -24,6 +24,8 @@ MAX_CLIENTS=20
 ROOM_SIZE=4
 BIND_HOST=0.0.0.0
 PASSWORD=""
+PASSWORD_SET=0
+CONFIG_ARGS=()
 
 die() { echo "错误：$*" >&2; exit 1; }
 log() { echo "[heartapp] $*"; }
@@ -36,14 +38,17 @@ HeartApp Linux 服务端安装器（systemd）
   --host ADDRESS       监听地址，默认 0.0.0.0；反向代理建议 127.0.0.1
   --port PORT          服务端口，默认 8765
   --max-clients COUNT  总连接上限，默认 20
-  --room-size COUNT    每房间人数 1～4，默认 4
+  --room-size COUNT    每房间人数 1～128，默认 4
   --user NAME          系统运行用户，默认 heartapp
   --password VALUE     服务器密码；也可安装后修改 /etc/heartapp-relay.env
+  --non-interactive    自动部署，跳过交互确认；首次必须显式提供密码
   -h, --help           显示帮助，不安装、不需要 root
 
 示例：sudo bash server/install-linux.sh --host 127.0.0.1 --max-clients 20
 安装到 /opt/heartapp-relay，注册 heartapp-relay 服务并开机启动。
-重新执行会覆盖 env 和单元文件；升级前备份配置。重启服务会清空临时房间。
+默认进入安装向导，隐藏输入并确认密码、选择端口、确认后安装。
+重新执行时沿用现有配置。重启服务会清空临时房间。
+安装后运行 sudo heartapp-server 修改密码、端口，或查看状态与日志。
 运维：systemctl status heartapp-relay；journalctl -u heartapp-relay -n 50
 说明：server/Linux说明.md。该帮助不会安装系统依赖，需预先准备 Python 3.9+ 和 venv。
 HELP
@@ -55,12 +60,13 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || die "$1 缺少参数值（--help 查看用法）" ;;
     esac
     case "$1" in
-        --port)         PORT="$2"; shift 2 ;;
-        --max-clients)  MAX_CLIENTS="$2"; shift 2 ;;
-        --room-size)    ROOM_SIZE="$2"; shift 2 ;;
-        --host)         BIND_HOST="$2"; shift 2 ;;
-        --password)     PASSWORD="$2"; shift 2 ;;
-        --user)         RUN_USER="$2"; shift 2 ;;
+        --port)         PORT="$2"; CONFIG_ARGS+=("--port" "$2"); shift 2 ;;
+        --max-clients)  MAX_CLIENTS="$2"; CONFIG_ARGS+=("--max-clients" "$2"); shift 2 ;;
+        --room-size)    ROOM_SIZE="$2"; CONFIG_ARGS+=("--room-size" "$2"); shift 2 ;;
+        --host)         BIND_HOST="$2"; CONFIG_ARGS+=("--host" "$2"); shift 2 ;;
+        --password)     PASSWORD="$2"; PASSWORD_SET=1; shift 2 ;;
+        --user)         RUN_USER="$2"; CONFIG_ARGS+=("--user" "$2"); shift 2 ;;
+        --non-interactive) CONFIG_ARGS+=("--non-interactive"); shift ;;
         -h|--help)
             usage
             exit 0 ;;
@@ -85,6 +91,18 @@ done
 [ -n "$PY" ] || die "找不到 Python 3.9+，请先安装（Debian/Ubuntu: apt install python3 python3-venv）"
 
 log "使用 $("$PY" --version 2>&1)"
+
+# 向导从 /dev/tty 读取，支持 curl | sudo bash。取消后不复制代码或启动服务。
+[ -f "$SRC_ROOT/server/manage-linux.py" ] || die "分发包缺少安装向导，请使用包含新向导的 Release"
+if [ "$PASSWORD_SET" -eq 1 ]; then
+    HEARTAPP_INSTALL_PASSWORD="$PASSWORD" "$PY" "$SRC_ROOT/server/manage-linux.py" configure "${CONFIG_ARGS[@]}"
+else
+    "$PY" "$SRC_ROOT/server/manage-linux.py" configure "${CONFIG_ARGS[@]}"
+fi
+PORT="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key port)"
+RUN_USER="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key user)"
+BIND_HOST="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key host)"
+unset PASSWORD
 
 # 运行用户（仅用于降低权限，本身不需要登录）
 if ! id "$RUN_USER" >/dev/null 2>&1; then
@@ -117,14 +135,14 @@ log "创建虚拟环境并安装依赖（只有 websockets）"
 
 chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
 
-log "写入配置 $ENV_FILE"
-umask 077
-cat > "$ENV_FILE" <<EOF
-# HeartApp 联机转发服务配置
-# 访问密码：留空表示任何人都能登录（仅建议在纯局域网使用）
-HEARTAPP_RELAY_PASSWORD=${PASSWORD}
-EOF
-chmod 600 "$ENV_FILE"
+# 管理器跟随服务端安装，终端菜单不依赖额外 Python 包。
+install -m 644 "$SRC_ROOT/server/manage-linux.py" "$APP_DIR/manage-linux.py"
+install -d -m 755 /usr/local/bin
+cat > /usr/local/bin/heartapp-server <<'LAUNCHER'
+#!/bin/sh
+exec /opt/heartapp-relay/venv/bin/python /opt/heartapp-relay/manage-linux.py "$@"
+LAUNCHER
+chmod 755 /usr/local/bin/heartapp-server
 
 log "写入 systemd 服务 /etc/systemd/system/${SERVICE}.service"
 cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
@@ -137,9 +155,9 @@ Wants=network-online.target
 Type=simple
 User=${RUN_USER}
 Group=${RUN_USER}
-EnvironmentFile=-${ENV_FILE}
+EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay --host ${BIND_HOST} --port ${PORT} --max-clients ${MAX_CLIENTS} --room-size ${ROOM_SIZE}
+ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
 Restart=on-failure
 RestartSec=3
 
@@ -159,7 +177,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now "$SERVICE"
+systemctl enable "$SERVICE"
+systemctl restart "$SERVICE"
 
 sleep 1
 log "检查服务状态"
@@ -187,8 +206,11 @@ cat <<EOF
  服务名    ${SERVICE}
  监听      ${BIND_HOST}:${PORT}
  代码      ${APP_DIR}
- 配置      ${ENV_FILE}   （改密码后执行 systemctl restart ${SERVICE}）
+ 配置      ${ENV_FILE}   （推荐通过管理菜单修改）
  运行用户  ${RUN_USER}
+
+ 管理菜单
+   sudo heartapp-server
 
  常用命令
    systemctl status ${SERVICE}
@@ -197,6 +219,8 @@ cat <<EOF
 
  客户端填写
    ws://服务器IP:${PORT}
+   端口须在服务器防火墙和云平台安全组放行（TCP ${PORT}）。
+   若服务器经过路由器，还需将端口转发到本机。
    公网请在前面加 TLS 反向代理，客户端填 wss://你的域名
 
  ⚠ 该服务不保存任何心率历史；房间、会话与令牌都在内存，重启即清空。

@@ -5,12 +5,15 @@ import json
 from urllib.parse import urlsplit, urlunsplit
 
 VERSION = 2
+DEFAULT_ROOM_SIZE = 4
+MAX_ROOM_SIZE = 128
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def server_url(value: str) -> str:
     value = value.strip()
-    if "://" not in value:
+    implicit_scheme = "://" not in value
+    if implicit_scheme:
         value = "wss://" + value
     parts = urlsplit(value)
     scheme = {"http": "ws", "https": "wss"}.get(parts.scheme, parts.scheme)
@@ -19,9 +22,11 @@ def server_url(value: str) -> str:
     if parts.username or parts.password or parts.query or parts.fragment:
         raise ValueError("服务器地址不能包含账号、密码、查询参数或片段")
     try:
-        parts.port
+        port = parts.port
     except ValueError as exc:
         raise ValueError("服务器端口无效") from exc
+    if implicit_scheme and port not in (None, 443):
+        scheme = "ws"
     return urlunsplit((scheme, parts.netloc, parts.path.rstrip("/") or "/", "", ""))
 
 

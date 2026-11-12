@@ -19,6 +19,19 @@ class TestRoomAddress(unittest.TestCase):
         self.assertEqual(server_url("http://[::1]:8765"), "ws://[::1]:8765/")
         self.assertEqual(server_url("hr.example.com/relay/"), "wss://hr.example.com/relay")
 
+    def test_short_addresses_infer_scheme_from_port(self):
+        cases = {
+            "192.168.1.20:8765": "ws://192.168.1.20:8765/",
+            "relay.example.com:9000": "ws://relay.example.com:9000/",
+            "[::1]:8765": "ws://[::1]:8765/",
+            "relay.example.com:443/relay": "wss://relay.example.com:443/relay",
+            "relay.example.com": "wss://relay.example.com/",
+            "wss://relay.example.com:9443": "wss://relay.example.com:9443/",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(server_url(value), expected)
+
     def test_bad_address_and_room_code(self):
         for value in ("file:///tmp/test", "ws://", "https://user:secret@example.com", "ws://example.com:bad"):
             with self.assertRaises(ValueError):

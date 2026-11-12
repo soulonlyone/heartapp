@@ -38,7 +38,7 @@ class TestServerSettings(unittest.TestCase):
 
     def test_validation_rejects_invalid_and_credential_urls(self):
         for settings in (ServerSettings(port=0), ServerSettings(port=True), ServerSettings(max_clients=0),
-                         ServerSettings(room_size=5), ServerSettings(scope="invalid"),
+                         ServerSettings(room_size=129), ServerSettings(scope="invalid"),
                          ServerSettings(public_url="ws://example.com"),
                          ServerSettings(public_url="https://user:secret@example.com")):
             with self.subTest(settings=settings), self.assertRaises(ValueError):

@@ -32,7 +32,7 @@ class Member:
 
 class Relay:
     def __init__(self, *, max_clients: int = 100, room_size: int = 4, password: str = "") -> None:
-        self.max_clients, self.room_size, self.password = max_clients, room_size, password
+        self.max_clients, self.room_size, self.password = max_clients, min(room_size, max_clients), password
         self.rooms: Dict[str, Dict[str, Member]] = {}
         self.room_names: Dict[str, str] = {}
         self.sessions: Dict[str, Member] = {}
@@ -189,7 +189,7 @@ class Relay:
                 member.socket, member.offline_since = socket, None
                 member.ready = False
             await self.send(socket, dict(type="login_ok", version=VERSION, self_id=member.id,
-                                        resume_token=member.token, room=member.room))
+                                        resume_token=member.token, room=member.room, capacity=self.room_size))
             member.ready = True
             if member.room:
                 await self.welcome(member)

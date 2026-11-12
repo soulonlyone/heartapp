@@ -5,6 +5,8 @@ import bisect
 import ctypes
 import math
 import sys
+import time
+from datetime import datetime
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QEvent, QPointF, QRectF, Qt, Signal
@@ -15,6 +17,9 @@ from PySide6.QtGui import (
     QLinearGradient,
     QPainter,
     QPainterPath,
+    QPixmap,
+    QImageReader,
+    QBrush,
     QPalette,
     QPen,
     QRegion,
@@ -270,7 +275,7 @@ class Reading(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.bpm = None
-        self.setMinimumSize(320, 205)
+        self.setMinimumSize(210, 124)
 
     def set_state(self, *, bpm: Optional[int] = None, **kwargs) -> None:
         self.bpm = bpm
@@ -280,7 +285,7 @@ class Reading(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QColor(INK if self.bpm else MUTED))
-        size = min(210, int(self.height() * .98), int(self.width() * .50))
+        size = min(142, int(self.height() * .88), int(self.width() * .50))
         painter.setFont(serif(size))
         text = str(self.bpm) if self.bpm else "—"
         text_width = painter.fontMetrics().horizontalAdvance(text)
@@ -291,7 +296,7 @@ class Reading(QWidget):
         painter.drawText(bounds, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          str(self.bpm) if self.bpm else "—")
         width = painter.fontMetrics().horizontalAdvance(str(self.bpm) if self.bpm else "—")
-        painter.setFont(serif(30))
+        painter.setFont(serif(24))
         painter.drawText(QPointF(min(width + 6, self.width() - 65), self.height() * .72), "bpm")
 
 
@@ -309,11 +314,19 @@ class Curve(QWidget):
         self._hover = None
         self._drag = None
         self._times = []
-        self.setMinimumHeight(190)
+        self._sample_times: Sequence[datetime] = []
+        self.setMinimumHeight(160)
         self.setMouseTracking(True)
 
-    def set_points(self, points: Sequence[Point], *, window=None, axis="elapsed", title=None, **kwargs) -> None:
-        self.points = sorted(points)
+    def set_points(self, points: Sequence[Point], *, window=None, axis="elapsed", title=None,
+                   sample_times: Sequence[datetime] = (), **kwargs) -> None:
+        if sample_times:
+            ordered = sorted(zip(points, sample_times), key=lambda entry: entry[0])
+            self.points = [point for point, _ in ordered]
+            self._sample_times = [sample_time for _, sample_time in ordered]
+        else:
+            self.points = sorted(points)
+            self._sample_times = []
         self._times = [p[0] for p in self.points]
         self.axis, self.window = axis, window
         if title is not None:
@@ -323,6 +336,7 @@ class Curve(QWidget):
     def clear(self) -> None:
         self.points = []
         self._times = []
+        self._sample_times = []
         self.view = None
         self._hover = None
         self.update()
@@ -393,6 +407,13 @@ class Curve(QWidget):
                 result.append([])
             result[-1].append(point)
         return result
+
+    def _hover_text(self, index: int) -> str:
+        elapsed, bpm = self.points[index]
+        text = f"{format_duration(abs(elapsed))}  ·  {bpm:.0f} bpm"
+        if self._sample_times:
+            text = f"{self._sample_times[index]:%Y-%m-%d %H:%M:%S}\n{text}"
+        return text
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -476,18 +497,19 @@ class Curve(QWidget):
             choices = [i for i in (index - 1, index) if 0 <= i < len(self.points)]
             if choices:
                 nearest = min(choices, key=lambda i: abs(self.points[i][0] - t))
-                stamp, bpm = self.points[nearest]
+                stamp = self._times[nearest]
                 # 缺失区间不显示插值读数。
                 if abs(stamp - t) <= 5:
                     x = px(stamp)
                     painter.setPen(QPen(QColor(MUTED), 1))
                     painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
-                    box = QRectF(min(max(plot.left(), x - 65), plot.right() - 130), plot.top() + 8, 130, 38)
+                    width = min(plot.width(), 180 if self._sample_times else 130)
+                    box_x = min(max(plot.left(), x - width / 2), plot.right() - width)
+                    box = QRectF(box_x, plot.top() + 8, width, 44 if self._sample_times else 38)
                     painter.fillRect(box, QColor(PAPER))
                     painter.setFont(QFont("Segoe UI", 10))
                     painter.setPen(QColor(INK))
-                    painter.drawText(box, Qt.AlignmentFlag.AlignCenter,
-                                     f"{format_duration(abs(stamp))}  ·  {bpm:.0f} bpm")
+                    painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self._hover_text(nearest))
 
 
 class GlobalHotkey(QAbstractNativeEventFilter):
@@ -532,16 +554,61 @@ class GlobalHotkey(QAbstractNativeEventFilter):
         self.registered = False
 
 
-class Overlay(QWidget):
+class OverlayAppearance:
+    COLORS = {"background": PAPER, "text": INK, "curve": RED}
+
     def __init__(self, store) -> None:
+        self.colors = {}
+        for key, default in self.COLORS.items():
+            color = QColor(store.get_setting(f"overlay_color_{key}", default))
+            self.colors[key] = color if color.isValid() else QColor(default)
+        self.background_opacity = max(0, min(100, store.get_int_setting("overlay_background_opacity", 100)))
+        self.line_width = max(1, min(5, store.get_int_setting("overlay_line_width", 1)))
+        self.image = QPixmap()
+        path = store.get_setting("overlay_background_image", "")
+        if path:
+            self.image = self.load_image(path)
+
+    @staticmethod
+    def load_image(path: str) -> QPixmap:
+        reader = QImageReader(path)
+        size = reader.size()
+        if size.isValid() and max(size.width(), size.height()) > 2048:
+            size.scale(2048, 2048, Qt.AspectRatioMode.KeepAspectRatio)
+            reader.setScaledSize(size)
+        reader.setAutoTransform(True)
+        return QPixmap.fromImage(reader.read())
+
+    def paint_background(self, painter: QPainter, rect: QRectF, radius: int) -> None:
+        painter.save()
+        painter.setOpacity(self.background_opacity / 100)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(self.colors["background"]))
+        if self.image.isNull():
+            painter.drawRoundedRect(rect, radius, radius)
+        else:
+            clip = QPainterPath()
+            clip.addRoundedRect(rect, radius, radius)
+            painter.setClipPath(clip)
+            scale = max(rect.width() / self.image.width(), rect.height() / self.image.height())
+            w, h = rect.width() / scale, rect.height() / scale
+            source = QRectF((self.image.width() - w) / 2, (self.image.height() - h) / 2, w, h)
+            painter.drawPixmap(rect, self.image, source)
+        painter.restore()
+
+
+class Overlay(QWidget):
+    def __init__(self, store, *, appearance: Optional[OverlayAppearance] = None) -> None:
         # Windows 会在 owner 最小化时隐藏其工具窗口。独立顶层小窗由主窗口持有引用，
         # 退出时显式关闭，不能把主窗口设为 Qt / 原生父窗口。
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
                          Qt.WindowType.WindowStaysOnTopHint)
         self.store = store
+        self.appearance = appearance if appearance is not None else OverlayAppearance(store)
         self.bpm = None
         self.detail = "等待读数"
         self.points = []
+        self.curve_seconds = 60
         self._drag = None
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -556,11 +623,18 @@ class Overlay(QWidget):
         self.setWindowOpacity(store.get_int_setting("overlay_opacity", 92) / 100)
 
     def set_scale(self, percent: int, *, persist: bool = True) -> None:
-        percent = max(75, min(150, percent))
-        self.resize(round(320 * percent / 100), round(84 * percent / 100))
+        self._scale = max(75, min(150, percent))
+        self.resize(round(self._layout_width() * self._scale / 100), round(84 * self._scale / 100))
         if persist:
-            self.store.set_setting("overlay_scale", str(percent))
+            self.store.set_setting("overlay_scale", str(self._scale))
         self.update()
+
+    def _layout_width(self) -> int:
+        return 320 if self.curve_seconds else 190
+
+    def set_curve_seconds(self, seconds: int) -> None:
+        self.curve_seconds = seconds
+        self.set_scale(self._scale, persist=False)
 
     def set_reading(self, bpm: Optional[int], detail: str, points=()) -> None:
         self.bpm, self.detail, self.points = bpm, detail, list(points)
@@ -574,42 +648,51 @@ class Overlay(QWidget):
 
     def paintEvent(self, event) -> None:
         p = QPainter(self)
-        p.scale(self.width() / 320, self.height() / 84)
+        width = self._layout_width()
+        p.scale(self.width() / width, self.height() / 84)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(QColor(218, 213, 204, 180), 1))
-        p.setBrush(QColor(251, 249, 244, 240))
-        p.drawRoundedRect(QRectF(1, 1, 318, 82), 9, 9)
+        self.appearance.paint_background(p, QRectF(1, 1, width - 2, 82), 9)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(RED if self.bpm else MUTED))
         p.drawEllipse(QPointF(20, 34), 4, 4)
         p.setFont(serif(55))
-        p.setPen(QColor(INK))
+        p.setPen(self.appearance.colors["text"])
         p.drawText(QRectF(34, -2, 94, 64), Qt.AlignmentFlag.AlignVCenter,
                    str(self.bpm) if self.bpm else "—")
         p.setFont(QFont("Segoe UI", 10))
         p.drawText(QPointF(125, 44), "bpm")
+        if self.curve_seconds:
+            self._paint_curve(p)
+        p.setPen(self.appearance.colors["text"])
+        p.setFont(QFont("Microsoft YaHei UI", 8))
+        detail = p.fontMetrics().elidedText(self.detail, Qt.TextElideMode.ElideRight, width - 30)
+        p.drawText(QRectF(15, 61, width - 30, 17), Qt.AlignmentFlag.AlignLeft, detail)
+        p.drawText(QRectF(width - 23, 3, 16, 18), Qt.AlignmentFlag.AlignCenter, "×")
+
+    def _paint_curve(self, p: QPainter) -> None:
         p.setPen(QPen(QColor(RULE), 1))
         p.drawLine(166, 18, 166, 56)
-        p.setPen(QPen(QColor(RED), 1.1))
+        end = time.monotonic()
+        start = end - self.curve_seconds
+        points = [(t, b) for t, b in self.points if t >= start]
+        if len(points) < 2:
+            return
+        low = min(b for _, b in points) - 5
+        high = max(b for _, b in points) + 5
+        path = QPainterPath()
+        for i, (t, bpm) in enumerate(points):
+            point = QPointF(182 + (t - start) / self.curve_seconds * 112,
+                            54 - (bpm - low) / (high - low) * 30)
+            if i == 0 or t - points[i - 1][0] > 5:
+                path.moveTo(point)
+            else:
+                path.lineTo(point)
+        p.setPen(QPen(self.appearance.colors["curve"], self.appearance.line_width))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        if len(self.points) > 1:
-            start, end = self.points[0][0], self.points[-1][0]
-            low, high = min(b for _, b in self.points) - 5, max(b for _, b in self.points) + 5
-            line = QPainterPath()
-            for i, (t, b) in enumerate(self.points):
-                pt = QPointF(182 + (t - start) / max(1, end - start) * 112, 54 - (b - low) / (high - low) * 30)
-                if i == 0 or t - self.points[i - 1][0] > 5:
-                    line.moveTo(pt)
-                else:
-                    line.lineTo(pt)
-            p.drawPath(line)
-        p.setPen(QColor(MUTED))
-        p.setFont(QFont("Microsoft YaHei UI", 8))
-        p.drawText(QRectF(15, 61, 285, 17), Qt.AlignmentFlag.AlignLeft, self.detail)
-        p.drawText(QRectF(297, 3, 16, 18), Qt.AlignmentFlag.AlignCenter, "×")
+        p.drawPath(path)
 
     def mousePressEvent(self, event) -> None:
-        if event.position().x() / self.width() >= 294 / 320 and event.position().y() / self.height() < 26 / 84:
+        if event.position().x() / self.width() >= 1 - 26 / self._layout_width() and event.position().y() / self.height() < 26 / 84:
             self.hide()
         elif event.button() == Qt.MouseButton.LeftButton:
             self._drag = event.globalPosition().toPoint() - self.pos()

@@ -108,7 +108,10 @@ class ComparisonCurve(Curve):
             values = [b for t, b in item["points"] if left <= t <= right and b is not None]
             if values:
                 texts.append(f"{item['name']}  {sum(values) / len(values):.0f} / {max(values):.0f}")
-        return "窗口采样均值 / 峰值：  " + "    ·    ".join(texts) if texts else "等待共享读数，曲线从加入房间后开始积累。"
+        if not texts:
+            return "等待共享读数，曲线从加入房间后开始积累。"
+        summary = "窗口采样均值 / 峰值：  " + "    ·    ".join(texts[:4])
+        return summary + (f"    ·    另有 {len(texts) - 4} 人" if len(texts) > 4 else "")
 
     def paintEvent(self, event) -> None:
         p = QPainter(self)
@@ -171,12 +174,17 @@ class ComparisonCurve(Curve):
             t = left + (self._hover.x() - plot.left()) / plot.width() * (right - left)
             p.setPen(QPen(QColor(MUTED), 1))
             p.drawLine(QPointF(px(t), plot.top()), QPointF(px(t), plot.bottom()))
-            rows = self.values_at(t)
-            box = QRectF(min(max(plot.left(), px(t) + 12), plot.right() - 240), plot.top() + 8, 240, 28 + 23 * len(rows))
+            values = self.values_at(t)
+            limit = max(1, int((plot.height() - 56) // 23))
+            rows = values[:limit]
+            extra = len(values) - len(rows)
+            box = QRectF(min(max(plot.left(), px(t) + 12), plot.right() - 240), plot.top() + 8, 240, 28 + 23 * (len(rows) + bool(extra)))
             p.fillRect(box, QColor(PAPER))
             p.setFont(QFont("Microsoft YaHei UI", 9))
             p.setPen(QColor(MUTED))
             p.drawText(QPointF(box.left() + 12, box.top() + 18), "−" + format_duration(abs(t)))
+            if extra:
+                p.drawText(QPointF(box.left() + 120, box.top() + 18), f"另有 {extra} 人")
             for i, (item, bpm) in enumerate(rows):
                 p.setPen(QColor(item["color"]))
                 name = p.fontMetrics().elidedText(item["name"], Qt.TextElideMode.ElideRight, 140)

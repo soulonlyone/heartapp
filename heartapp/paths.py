@@ -1,17 +1,14 @@
-"""路径工具：数据库、导出文件、只读资源分别放在哪里。
-
-打包成 exe 之后有两个完全不同的目录，混用会导致**用户数据丢失**：
-
-* ``app_dir()``      —— 用户的**数据**目录。打包后必须落在 exe 所在目录，
-  因为 ``__file__`` 指向的是 PyInstaller 的临时解包目录（``_MEIPASS``），
-  程序一退出就被删掉，心率记录会跟着一起没。
-* ``resource_dir()`` —— 只读**资源**目录（图标等）。打包后就是临时解包目录。
-"""
+"""解析程序位置、只读资源和用户数据路径。"""
 
 from __future__ import annotations
 
+import os
+import sqlite3
 import sys
+import tempfile
+from contextlib import closing
 from pathlib import Path
+from typing import Optional
 
 
 def is_frozen() -> bool:
@@ -20,7 +17,7 @@ def is_frozen() -> bool:
 
 
 def app_dir() -> Path:
-    """程序所在目录（数据就放它旁边）。
+    """程序所在目录。
 
     * 源码运行：``heartapp`` 包的上一级
     * exe 运行：**exe 文件所在目录**
@@ -37,21 +34,63 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+PORTABLE_MARKER = "heartapp-portable"
+
+
+def uses_profile_data() -> bool:
+    return is_frozen() and not (app_dir() / PORTABLE_MARKER).is_file()
+
+
 def data_dir() -> Path:
-    """数据目录。默认放在程序目录下的 ``data``，方便直接找到、直接备份。"""
-    target = app_dir() / "data"
-    try:
-        target.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        # 程序目录不可写（例如装在 Program Files、或 U 盘只读）时退回用户目录
-        fallback = Path.home() / "HeartApp"
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
+    """普通 EXE 使用用户目录，便携版和源码使用程序旁的 data。"""
+    if uses_profile_data():
+        local = os.environ.get("LOCALAPPDATA")
+        target = Path(local) / "HeartApp" if local else Path.home() / "HeartApp"
+    else:
+        target = app_dir() / "data"
+    target.mkdir(parents=True, exist_ok=True)
     return target
+
+
+def legacy_db_path(target: Path) -> Optional[Path]:
+    if uses_profile_data():
+        for source in (app_dir() / "data/heartrate.db", Path.home() / "HeartApp/heartrate.db"):
+            if source.is_file() and source.resolve() != target.resolve():
+                return source
+    return None
+
+
+def migrate_database(source: Path, target: Path) -> None:
+    """复制并校验 SQLite 快照，包含 WAL 中已提交的记录。"""
+    with tempfile.TemporaryDirectory(dir=target.parent, prefix=".migration-") as tmp:
+        snapshot = Path(tmp) / target.name
+        with closing(sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)) as old:
+            with closing(sqlite3.connect(snapshot)) as new:
+                old.backup(new)
+                if new.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+                    raise sqlite3.DatabaseError("旧数据库完整性校验失败")
+        # 目标可能已被另一实例创建。只在目标不存在时发布快照。
+        if os.name == "nt":
+            snapshot.rename(target)
+        else:
+            os.link(snapshot, target)
 
 
 def default_db_path() -> Path:
     return data_dir() / "heartrate.db"
+
+
+def cli_db_path() -> Path:
+    target = default_db_path()
+    if not target.exists():
+        source = legacy_db_path(target)
+        if source is not None:
+            try:
+                migrate_database(source, target)
+            except FileExistsError:
+                if not target.is_file():
+                    raise
+    return target
 
 
 def default_export_path(session_id: int) -> Path:

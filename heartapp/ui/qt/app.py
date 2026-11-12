@@ -9,9 +9,12 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 import sys
 import time
 from collections import deque
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Deque, Dict, List, Optional, Tuple
@@ -41,7 +44,7 @@ from ... import APP_NAME, __version__
 from ...metrics import format_duration
 from ...paths import icon_path
 from ...simulator import DEFAULT_PROFILE, PROFILES
-from ...store import HeartRateStore
+from ...store import HeartRateStore, RecordingAlreadyOpenError, recording_lock
 from ...engine import Engine
 from .editorial import (
     INK,
@@ -161,10 +164,11 @@ class _Dialogs:
         QMessageBox.critical(parent, title, text)
 
     @classmethod
-    def ask(cls, parent, title, text, *args, **kwargs) -> bool:
+    def ask(cls, parent, title, text, *, default=QMessageBox.StandardButton.NoButton) -> bool:
         if cls.quiet:
             return True
-        return QMessageBox.question(parent, title, text) == QMessageBox.StandardButton.Yes
+        buttons = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        return QMessageBox.question(parent, title, text, buttons, default) == QMessageBox.StandardButton.Yes
 
 
 class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
@@ -203,21 +207,30 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         self._selected_session_id: Optional[int] = None
 
         self._pending_autorecord = False
+        self._last_device_address = self.store.get_setting("last_device_address")
+        self._connecting_last_device = False
         self._scan_running = False
         self._max_hr = self.engine.max_hr()
         self._closed = False
         self._closing = False
         self._close_ready = False
+        self._loading_overlay_preset = False
         self._init_room()
 
         self.setWindowTitle(f"{APP_NAME} — PC 心率监控")
-        self.resize(1120, 780)
-        self.setMinimumSize(920, 680)
+        self.resize(860, 600)
+        self.setMinimumSize(780, 575)
 
         self._build_ui()
+        self._update_state_pill()
         self._refresh_history()
         self._overlay = Overlay(self.store)
-        self._room_overlay = RoomOverlay(self.store)
+        self._room_overlay = RoomOverlay(self.store, appearance=self._overlay.appearance)
+        self._overlay_preview_window = Overlay(self.store, appearance=self._overlay.appearance)
+        self._refresh_overlay_preview()
+        self._room_overlay.set_scale(self._overlay_scale.value())
+        for overlay in (self._overlay, self._room_overlay):
+            overlay.set_curve_seconds(self._overlay_curve.currentData())
         self._overlay.set_passthrough(self._passthrough.isChecked())
         self._room_overlay.set_passthrough(self._passthrough.isChecked())
         self._room_overlay.setWindowOpacity(self.store.get_int_setting("overlay_opacity", 92) / 100)
@@ -276,9 +289,17 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
                 self._connect_btn.set_text("断开")
             elif state in ("stopped", "idle", "error"):
                 self._connect_btn.set_text("连接")
+            if self._connecting_last_device and state in ("connected", "error", "reconnecting", "stopped"):
+                self._connecting_last_device = False
+                if state in ("error", "reconnecting") and not self._closing:
+                    self._show_connection()
             if state == "connected" and self._pending_autorecord:
                 self._pending_autorecord = False
                 self.engine.start_pc_recording(_default_session_note(), "游戏")
+            address = payload.get("device_address")
+            if address and address != self._last_device_address:
+                self.store.set_setting("last_device_address", address)
+                self._last_device_address = address
 
         elif kind == "sample":
             sample = payload.get("sample")
@@ -302,7 +323,13 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         elif kind == "devices":
             devices = payload.get("devices") or []
             self._scan_running = False
-            self._scan_btn.setEnabled(True)
+            self._scan_btn.setEnabled(not self._sim_chip.isChecked())
+            detail = payload.get("error") or payload.get("detail")
+            if detail:
+                self._connection_note.setText(detail)
+                self._status_label.setText(detail)
+            if payload.get("error") and not self._closing:
+                _Dialogs.warn(self, APP_NAME, detail)
             self._devices = list(devices)
             self._device_combo.clear()
             for device in devices:
@@ -322,8 +349,14 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         elif kind == "shutdown_failed":
             self._closing = False
             self.setEnabled(True)
-            message = "记录尚未保存完成，已取消退出。请检查磁盘空间或文件权限后重试。\n\n" + payload.get("message", "")
-            self._status_label.setText("保存失败，已取消退出；记录仍保留在内存中，请重试。")
+            detail = payload.get("message", "")
+            if self.engine.is_recording:
+                message = "记录尚未保存完成，已取消退出。请检查磁盘空间或文件权限后重试。"
+                self._status_label.setText("保存失败，已取消退出；记录仍保留在内存中，请重试。")
+            else:
+                message = "记录已保存，但程序未能完成退出。请稍后重试。"
+                self._status_label.setText("未能退出，请稍后重试。")
+            message += f"\n\n{detail}"
             _Dialogs.error(self, APP_NAME, message)
 
         elif kind == "shutdown_ready":
@@ -336,6 +369,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             self._pc_clock = payload.get("clock", time.monotonic())
             self._session_points = []
             self._last_session_id = self._session_id
+            self._view_record_btn.hide()
             self._session_caption.setText(f"{self._session_started:%Y-%m-%d  %H:%M} 开始 · 数据保存在本机")
             self._live_range.setCurrentIndex(2)
             self.live_chart.reset_view()
@@ -346,8 +380,6 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             self._rec_n = 0
             self._rec_min = None
             self._rec_max = None
-            self._record_btn.setText("停止记录")
-            self._record_btn.set_variant("danger")
             self._record_label.setText("●  模拟记录中" if self.engine.source_kind == "sim" else "●  记录中")
             self._update_state_pill()
 
@@ -358,9 +390,8 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             stats = payload.get("stats")
             self._session_id = None
             self._session_started = None
-            self._record_btn.setText("开始记录")
-            self._record_btn.set_variant("filled")
             self._record_label.setText("●  本次已保存")
+            self._view_record_btn.show()
             self._update_state_pill()
             if stats is not None:
                 self._history_summary.setText(self._format_stats(stats))
@@ -372,7 +403,26 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         texts = {"connected": "●  模拟已连接" if self.engine.source_kind == "sim" else "●  手表已连接",
                  "connecting": "◌  正在连接", "reconnecting": "◌  正在重连", "scanning": "◌  正在扫描",
                  "error": "●  连接异常"}
-        self._device_status.setText(texts.get(state, "●  连接手表"))
+        self._device_status.setText(texts.get(state, "●  手表未连接"))
+        recording = self._session_id is not None
+        connecting = state in ("connecting", "reconnecting")
+        can_choose = not (recording or connecting or state == "connected")
+        remembered = bool(self._last_device_address) and not self._sim_chip.isChecked()
+        self._choose_device_btn.setVisible(can_choose and remembered)
+        if recording:
+            action = "停止记录"
+        elif connecting:
+            action = "正在重连…" if state == "reconnecting" else "正在连接…"
+        elif state == "connected":
+            action = "开始记录"
+        else:
+            action = "连接上次设备" if remembered else "连接手表"
+        self._record_btn.setText(action)
+        self._record_btn.set_variant("danger" if recording else "filled")
+        self._record_btn.setEnabled(recording or not connecting)
+        can_disconnect = state in ("connected", "reconnecting")
+        self._disconnect_btn.setVisible(can_disconnect)
+        self._room_disconnect_btn.setVisible(can_disconnect)
 
     def _selected_profile_key(self) -> str:
         label = self._profile_combo.currentText()
@@ -384,17 +434,314 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
     def _on_sim_toggled(self) -> None:
         simulated = self._sim_chip.isChecked()
         self._device_combo.setEnabled(not simulated)
-        self._scan_btn.setEnabled(not simulated)
+        self._scan_btn.setEnabled(not simulated and not self._scan_running)
+        self._update_state_pill()
 
     def on_overlay_toggle(self) -> None:
         self._overlay.setVisible(not self._overlay.isVisible())
 
     def _set_overlay_opacity(self, value: int) -> None:
+        if self._loading_overlay_preset:
+            return
         self._overlay.setWindowOpacity(value / 100)
         self._room_overlay.setWindowOpacity(value / 100)
         self.store.set_setting("overlay_opacity", str(value))
+        self._refresh_overlay_preview()
+
+    def _set_overlay_scale(self, value: int) -> None:
+        if self._loading_overlay_preset:
+            return
+        self._overlay.set_scale(value)
+        self._room_overlay.set_scale(value)
+        self._refresh_overlay_preview()
+
+    def _set_overlay_curve(self) -> None:
+        if self._loading_overlay_preset:
+            return
+        seconds = self._overlay_curve.currentData()
+        self._overlay.set_curve_seconds(seconds)
+        self._room_overlay.set_curve_seconds(seconds)
+        self.store.set_setting("overlay_curve_seconds", str(seconds))
+        self._refresh_overlay_preview()
+
+    def _refresh_overlay_preview(self) -> None:
+        preview = self._overlay_preview_window
+        preview.set_scale(self._overlay_scale.value(), persist=False)
+        preview.set_curve_seconds(self._overlay_curve.currentData())
+        now = time.monotonic()
+        values = (71, 72, 71, 75, 73, 80, 78, 83, 82, 76, 77, 74)
+        interval = (preview.curve_seconds or 15) / (len(values) + 1)
+        preview.set_reading(74, "模拟数据", [(now - (len(values) - i) * interval, bpm)
+                                             for i, bpm in enumerate(values)])
+        source = preview.grab()
+        pixmap = QPixmap(source.size())
+        pixmap.setDevicePixelRatio(source.devicePixelRatio())
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setOpacity(self._opacity.value() / 100)
+        painter.drawPixmap(0, 0, source)
+        painter.end()
+        dpr = source.devicePixelRatio()
+        bounds = QSize(min(source.width(), round(300 * dpr)), min(source.height(), round(100 * dpr)))
+        self._overlay_preview.setPixmap(
+            pixmap.scaled(bounds, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        )
+        surface = "#E7E2D9" if self._overlay_preview_light.isChecked() else "#232935"
+        self._overlay_preview.setStyleSheet(f"background: {surface}; border-radius: 8px;")
+        for key, button in self._overlay_color_buttons.items():
+            color = preview.appearance.colors[key].name().upper()
+            button.setToolTip(f"当前颜色 {color}，点击更改")
+            button.setStyleSheet(
+                f"QPushButton {{ background: {color}; border: 1px solid {RULE}; border-radius: 18px; }}"
+                "QPushButton:hover, QPushButton:focus { border: 2px solid #60A5FA; }"
+                "QPushButton:disabled { background: #F0EDE7; border-style: dashed; }"
+            )
+        image_path = self.store.get_setting("overlay_background_image", "")
+        using_image = not preview.appearance.image.isNull()
+        self._overlay_clear_image.setVisible(bool(image_path))
+        self._overlay_image_button.setText("更换图片" if image_path else "选择图片")
+        self._overlay_color_buttons["background"].setEnabled(not using_image)
+        if using_image:
+            self._overlay_background_status.setText("当前背景 · 图片")
+            self._overlay_background_status.setToolTip(Path(image_path).name if image_path else "")
+            self._overlay_color_buttons["background"].setToolTip("移除图片后可调整纯色背景")
+        elif image_path:
+            self._overlay_background_status.setText("图片不可用 · 纯色")
+            self._overlay_background_status.setToolTip("")
+        else:
+            self._overlay_background_status.setText("当前背景 · 纯色")
+            self._overlay_background_status.setToolTip("")
+
+    def _refresh_overlay_appearance(self) -> None:
+        self._overlay.update()
+        self._room_overlay.update()
+        self._refresh_overlay_preview()
+
+    def _update_overlay_style_values(self) -> None:
+        if self._loading_overlay_preset:
+            return
+        appearance = self._overlay.appearance
+        appearance.background_opacity = self._overlay_background_opacity.value()
+        appearance.line_width = self._overlay_line_width.value()
+        self.store.set_setting("overlay_background_opacity", str(appearance.background_opacity))
+        self.store.set_setting("overlay_line_width", str(appearance.line_width))
+        self._refresh_overlay_appearance()
+
+    def _choose_overlay_color(self, key: str) -> None:
+        from PySide6.QtWidgets import QColorDialog, QGridLayout, QPushButton, QWidgetAction
+
+        anchor = self._overlay_color_buttons[key]
+        current = self._overlay.appearance.colors[key]
+        menu = QMenu(anchor)
+        palette = QWidget(menu)
+        grid = QGridLayout(palette)
+        grid.setContentsMargins(10, 10, 10, 10)
+        grid.setSpacing(7)
+        presets = (
+            PAPER, "#FFFFFF", INK, "#10243A", "#344054", "#6B7280",
+            "#F13D2B", "#FF9F43", "#F7D154", "#4DEBC0", "#60A5FA", "#B794F6",
+        )
+        def select_color(color: QColor) -> None:
+            menu.close()
+            self._set_overlay_color(key, color)
+
+        for index, hex_color in enumerate(presets):
+            color = QColor(hex_color)
+            swatch = QPushButton(palette)
+            swatch.setFixedSize(30, 30)
+            swatch.setCursor(Qt.CursorShape.PointingHandCursor)
+            swatch.setToolTip(hex_color)
+            swatch.setAccessibleName(hex_color)
+            border = "2px solid #60A5FA" if color == current else f"1px solid {RULE}"
+            swatch.setStyleSheet(
+                f"QPushButton {{ background: {hex_color}; border: {border}; border-radius: 6px; }}"
+                f"QPushButton:hover, QPushButton:focus {{ border: 2px solid #60A5FA; }}"
+            )
+            swatch.clicked.connect(lambda _checked=False, selected=color: select_color(selected))
+            grid.addWidget(swatch, index // 6, index % 6)
+        swatches = QWidgetAction(menu)
+        swatches.setDefaultWidget(palette)
+        menu.addAction(swatches)
+        custom = menu.addAction("自定义颜色…")
+        popup_x = min(0, anchor.width() - menu.sizeHint().width())
+        if menu.exec(anchor.mapToGlobal(QPoint(popup_x, anchor.height()))) == custom:
+            color = QColorDialog.getColor(current, self, "选择小窗颜色")
+            if color.isValid():
+                self._set_overlay_color(key, color)
+
+    def _set_overlay_color(self, key: str, color: QColor) -> None:
+        self.store.set_setting(f"overlay_color_{key}", color.name())
+        self._overlay.appearance.colors[key] = color
+        self._refresh_overlay_appearance()
+
+    def _choose_overlay_image(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(self, "选择小窗背景图片", "", "图片 (*.png *.jpg *.jpeg *.webp *.bmp)")
+        if not path:
+            return
+        image = self._overlay.appearance.load_image(path)
+        if image.isNull():
+            _Dialogs.warn(self, APP_NAME, "无法读取这张图片。请选一张有效的图片。")
+            return
+        self.store.set_setting("overlay_background_image", path)
+        self._overlay.appearance.image = image
+        self._refresh_overlay_appearance()
+
+    def _clear_overlay_image(self) -> None:
+        self.store.set_setting("overlay_background_image", "")
+        self._overlay.appearance.image = QPixmap()
+        self._refresh_overlay_appearance()
+
+    def _overlay_preset_values(self) -> Dict[str, str]:
+        appearance = self._overlay.appearance
+        return {
+            "overlay_opacity": str(self._opacity.value()),
+            "overlay_scale": str(self._overlay_scale.value()),
+            "overlay_curve_seconds": str(self._overlay_curve.currentData()),
+            "overlay_passthrough": "1" if self._passthrough.isChecked() else "0",
+            "overlay_background_opacity": str(self._overlay_background_opacity.value()),
+            "overlay_line_width": str(self._overlay_line_width.value()),
+            "overlay_background_image": self.store.get_setting("overlay_background_image") or "",
+            **{f"overlay_color_{key}": color.name() for key, color in appearance.colors.items()},
+            "overlay_x": str(self._overlay.x()),
+            "overlay_y": str(self._overlay.y()),
+            "room_overlay_x": str(self._room_overlay.x()),
+            "room_overlay_y": str(self._room_overlay.y()),
+        }
+
+    def _show_overlay_presets(self) -> None:
+        raw = self.store.get_setting("overlay_presets", "{}")
+        try:
+            presets = json.loads(raw)
+            if not isinstance(presets, dict):
+                raise ValueError
+        except ValueError:
+            _Dialogs.warn(self, APP_NAME, "无法读取小窗预设。")
+            return
+
+        button = self._overlay_presets_btn
+        menu = QMenu(button)
+        save = menu.addAction("保存当前设置…")
+        names = sorted(presets, key=str.casefold)
+        apply_actions = {}
+        delete_actions = {}
+        if names:
+            menu.addSeparator()
+            for name in names:
+                apply_actions[menu.addAction(name.replace("&", "&&"))] = name
+            remove = menu.addMenu("删除预设")
+            for name in names:
+                delete_actions[remove.addAction(name.replace("&", "&&"))] = name
+        choice = menu.exec(button.mapToGlobal(QPoint(0, button.height())))
+        if choice == save:
+            self._save_overlay_preset(presets)
+        elif choice in apply_actions:
+            name = apply_actions[choice]
+            self._apply_overlay_preset(name, presets[name])
+        elif choice in delete_actions:
+            name = delete_actions[choice]
+            if _Dialogs.ask(self, "删除小窗预设", f"要删除「{name}」吗？", default=QMessageBox.StandardButton.No):
+                del presets[name]
+                self.store.set_setting("overlay_presets", json.dumps(presets, ensure_ascii=False))
+        menu.deleteLater()
+
+    def _save_overlay_preset(self, presets: dict) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        name, accepted = QInputDialog.getText(self, "保存小窗预设", "预设名称")
+        name = name.strip()
+        if not accepted or not name:
+            return
+        if len(name) > 32 or not name.isprintable():
+            _Dialogs.warn(self, APP_NAME, "预设名称请使用 1～32 个可见字符。")
+            return
+        if name in presets and not _Dialogs.ask(
+            self, "覆盖小窗预设", f"要用当前设置覆盖「{name}」吗？", default=QMessageBox.StandardButton.No
+        ):
+            return
+        presets[name] = self._overlay_preset_values()
+        self.store.set_setting("overlay_presets", json.dumps(presets, ensure_ascii=False))
+        self._status_label.setText(f"已保存小窗预设「{name}」。")
+
+    def _apply_overlay_preset(self, name: str, saved: dict) -> None:
+        sliders = {
+            "overlay_opacity": self._opacity,
+            "overlay_scale": self._overlay_scale,
+            "overlay_background_opacity": self._overlay_background_opacity,
+            "overlay_line_width": self._overlay_line_width,
+        }
+        appearance = self._overlay.appearance
+        try:
+            values = {key: saved[key] for key in self._overlay_preset_values()}
+            numbers = {key: int(values[key]) for key in sliders}
+            if any(not slider.minimum() <= numbers[key] <= slider.maximum()
+                   for key, slider in sliders.items()):
+                raise ValueError
+            seconds = int(values["overlay_curve_seconds"])
+            curve_index = self._overlay_curve.findData(seconds)
+            colors = {key: QColor(values[f"overlay_color_{key}"]) for key in appearance.COLORS}
+            if curve_index < 0 or any(not color.isValid() for color in colors.values()):
+                raise ValueError
+            image_path = values["overlay_background_image"]
+            if not isinstance(image_path, str) or values["overlay_passthrough"] not in ("0", "1"):
+                raise ValueError
+            positions = {}
+            for prefix, overlay in (("overlay", self._overlay), ("room_overlay", self._room_overlay)):
+                x, y = int(values[f"{prefix}_x"]), int(values[f"{prefix}_y"])
+                point = QPoint(x, y)
+                screen = QApplication.screenAt(point)
+                if screen is None or not screen.availableGeometry().contains(point + QPoint(40, 20)):
+                    point = self.screen().availableGeometry().topLeft() + QPoint(24, 24)
+                positions[overlay] = point
+                values[f"{prefix}_x"], values[f"{prefix}_y"] = str(point.x()), str(point.y())
+        except (KeyError, TypeError, ValueError, OverflowError):
+            _Dialogs.warn(self, APP_NAME, f"小窗预设「{name}」的设置无效。")
+            return
+
+        image = appearance.load_image(image_path) if image_path else QPixmap()
+        try:
+            self.store.set_settings(values)
+        except sqlite3.Error as exc:
+            _Dialogs.warn(self, APP_NAME, f"无法应用小窗预设：{exc}")
+            return
+        self._loading_overlay_preset = True
+        try:
+            for key, slider in sliders.items():
+                slider.setValue(numbers[key])
+            self._overlay_curve.setCurrentIndex(curve_index)
+            self._passthrough.setChecked(values["overlay_passthrough"] == "1")
+        finally:
+            self._loading_overlay_preset = False
+
+        appearance.colors.update(colors)
+        appearance.image = image
+        appearance.background_opacity = numbers["overlay_background_opacity"]
+        appearance.line_width = numbers["overlay_line_width"]
+        self._overlay.set_scale(numbers["overlay_scale"], persist=False)
+        self._room_overlay.set_scale(numbers["overlay_scale"])
+        for overlay, point in positions.items():
+            overlay.set_curve_seconds(seconds)
+            overlay.setWindowOpacity(numbers["overlay_opacity"] / 100)
+            overlay.set_passthrough(self._passthrough.isChecked())
+            overlay.move(point)
+        self._refresh_overlay_appearance()
+        self._status_label.setText(f"已应用小窗预设「{name}」。")
+
+    def _reset_overlay_settings(self) -> None:
+        self._opacity.setValue(92)
+        self._overlay_scale.setValue(100)
+        self._overlay_curve.setCurrentIndex(self._overlay_curve.findData(60))
+        self._passthrough.setChecked(False)
+        self._overlay_background_opacity.setValue(100)
+        self._overlay_line_width.setValue(1)
+        for key, default in self._overlay.appearance.COLORS.items():
+            self._set_overlay_color(key, QColor(default))
+        self._clear_overlay_image()
 
     def _set_overlay_passthrough(self, enabled: bool) -> None:
+        if self._loading_overlay_preset:
+            return
         self._overlay.set_passthrough(enabled)
         self._room_overlay.set_passthrough(enabled)
         self.store.set_setting("overlay_passthrough", "1" if enabled else "0")
@@ -408,7 +755,17 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         sample = self._last_sample
         bpm = sample.bpm if fresh and sample and sample.contact is not False else None
         prefix = "模拟数据 · " if self.engine.source_kind == "sim" else ""
-        detail = "实时心率" if bpm else "等待有效读数 / 读数已过期"
+        if bpm:
+            detail = "实时心率"
+        elif self.engine.is_recording:
+            detail = ("记录中 · 设备已断开" if self.engine.state == "stopped"
+                      else "记录中 · 等待心率恢复")
+        elif self.engine.state == "connected":
+            detail = "等待手表传来心率"
+        elif self.engine.state in ("connecting", "reconnecting"):
+            detail = "正在等待设备连接"
+        else:
+            detail = "先在手表上开启心率广播"
         self._reading_detail.setText(prefix + detail)
         self.bpm_panel.set_state(bpm=bpm)
         self._overlay.set_reading(bpm, prefix + ("记录中" if self.engine.is_recording else detail),
@@ -425,11 +782,26 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             return
         self._scan_running = True
         self._scan_btn.setEnabled(False)
+        self._connection_note.setText("正在扫描附近蓝牙设备…")
         self.engine.scan(timeout=8.0)
+
+    def on_connect_last_device(self) -> None:
+        if not self._last_device_address or self._connecting_last_device or self.engine.is_running:
+            return
+        self._connecting_last_device = True
+        self._update_state_pill("connecting")
+        self.engine.connect_device(self._last_device_address)
+
+    def on_disconnect(self) -> None:
+        message = "要断开当前心率设备吗？"
+        if self.engine.is_recording:
+            message += "\n\n本次记录会继续计时，断开期间不会收到心率。"
+        if _Dialogs.ask(self, "断开连接", message, default=QMessageBox.StandardButton.No):
+            self.engine.stop_source()
 
     def on_connect_toggle(self) -> None:
         if self.engine.is_running:
-            self.engine.stop_source()
+            self.on_disconnect()
             return
         if self._sim_chip.isChecked():
             self.engine.connect_simulator(self._selected_profile_key())
@@ -449,11 +821,17 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
 
     def on_record_toggle(self) -> None:
         if self.engine.is_recording:
-            self.engine.stop_recording()
+            if _Dialogs.ask(
+                self, "停止记录", "要停止并保存本次心率记录吗？",
+                default=QMessageBox.StandardButton.No,
+            ):
+                self.engine.stop_recording()
             return
         if self.engine.state != "connected":
-            self._status_label.setText("请先连接手表，或在连接面板选择模拟演示。")
-            self._show_connection()
+            if self._last_device_address and not self._sim_chip.isChecked():
+                self.on_connect_last_device()
+            else:
+                self._show_connection()
             return
         self.engine.start_pc_recording(_default_session_note(), "游戏")
 
@@ -597,6 +975,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
             return
         if self._last_session_id == self._selected_session_id:
             self._last_session_id = None
+            self._view_record_btn.hide()
         self.store.delete_session(self._selected_session_id)
         self._selected_session_id = None
         self._history_summary.setText("选择左侧的一次记录查看详情。")
@@ -667,6 +1046,14 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
                 self.tree.setItem(row, col, item)
         self.tree.blockSignals(False)
 
+    def on_view_last_record(self) -> None:
+        self._tabbar.select(1)
+        for row, session in enumerate(self._sessions):
+            if session.id == self._last_session_id:
+                self.tree.selectRow(row)
+                self.tree.scrollToItem(self.tree.item(row, 0))
+                break
+
     def on_history_select(self) -> None:
         rows = self.tree.selectionModel().selectedRows()
         if not rows:
@@ -685,8 +1072,12 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         )
 
         self.history_chart.reset_view()
-        self.history_chart.set_points([(s.t_offset, s.bpm) for s in samples if s.bpm > 0 and s.contact is not False],
-                                      axis="elapsed")
+        valid_samples = [sample for sample in samples if sample.bpm > 0 and sample.contact is not False]
+        self.history_chart.set_points(
+            [(sample.t_offset, sample.bpm) for sample in valid_samples],
+            axis="elapsed",
+            sample_times=[sample.ts for sample in valid_samples],
+        )
         source = SOURCE_LABELS.get(session.source, session.source)
         self._history_summary.setText(f"{session.started_at:%Y-%m-%d  %H:%M}  ·  {source}\n"
                                       + self._format_stats(stats))
@@ -733,6 +1124,7 @@ class HeartAppWindow(RoomActions, EditorialLayout, FramelessWindow):
         self._room_overlay.close()
         self._overlay_hotkey.close()
         self._overlay.close()
+        self._overlay_preview_window.close()
         self._poll_timer.stop()
         super().closeEvent(event)
 
@@ -842,6 +1234,48 @@ class SettingsDialog(QWidget):
         self.close()
 
 
+def _choose_startup_database() -> Optional[Path]:
+    from PySide6.QtCore import QSettings
+
+    from ...paths import default_db_path, legacy_db_path, migrate_database
+
+    target = default_db_path()
+    source = legacy_db_path(target)
+    if source is None:
+        return target
+    preferences = QSettings("HeartApp", "DatabaseMigration")
+    # 用户可能在多个文件夹保留旧版，分别记住已处理的数据库。
+    from hashlib import sha256
+
+    key = sha256(str(source.resolve()).encode("utf-8")).hexdigest()
+    if target.exists():
+        if preferences.value(key, False, type=bool):
+            return target
+        if _Dialogs.ask(
+            None, "发现两份记录",
+            f"本次打开旧数据库？\n{source}\n\n"
+            f"选择「否」则使用新位置，并记住此选择：\n{target}\n\n"
+            "两份数据库会分别保留。",
+        ):
+            return source
+        preferences.setValue(key, True)
+        return target
+    if not _Dialogs.ask(
+        None, "发现旧版记录",
+        f"从以下位置复制记录和设置？\n{source}\n\n"
+        f"新位置：\n{target}\n\n"
+        "选择「否」可退出，稍后再迁移。原数据库会保留。",
+    ):
+        return None
+    try:
+        migrate_database(source, target)
+    except (OSError, sqlite3.Error) as exc:
+        _Dialogs.error(None, "迁移失败", f"{exc}\n\n原数据库保留在：\n{source}")
+        return None
+    preferences.setValue(key, True)
+    return target
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -852,10 +1286,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--simulate", action="store_true")
     args = parser.parse_args(argv)
 
-    from ...paths import default_db_path
-
-    db_path = Path(args.db) if args.db else default_db_path()
-
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
 
@@ -863,15 +1293,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))
 
-    store = HeartRateStore(db_path)
+    db_path = Path(args.db) if args.db else _choose_startup_database()
+    if db_path is None:
+        return 0
+    try:
+        with recording_lock(db_path), closing(HeartRateStore(db_path)) as store:
+            return _run_window(app, store, simulate=args.simulate)
+    except RecordingAlreadyOpenError as exc:
+        _Dialogs.warn(None, APP_NAME, str(exc))
+        return 1
+
+
+def _run_window(app: QApplication, store: HeartRateStore, *, simulate: bool) -> int:
     store.close_stale_sessions()
     engine = Engine(store)
     engine.start()
 
-    window = HeartAppWindow(store, engine, db_path=db_path)
+    window = HeartAppWindow(store, engine)
     window.show()
 
-    if args.simulate:
+    if simulate:
         window._sim_chip.setChecked(True)
         window._on_sim_toggled()
         engine.connect_simulator(DEFAULT_PROFILE)
@@ -880,7 +1321,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         code = app.exec()
     finally:
         engine.shutdown()
-        store.close()
     return int(code)
 
 

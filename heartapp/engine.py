@@ -137,7 +137,7 @@ class Engine:
             finally:
                 loop.close()
 
-    def shutdown(self, timeout: float = 10.0) -> None:
+    def shutdown(self, timeout: float = 12.0) -> None:
         """停止引擎。会先收尾正在记录的会话，保证数据落库。"""
         thread, loop = self._thread, self._loop
         if thread is None or loop is None:
@@ -303,7 +303,8 @@ class Engine:
     def _status(self, state: str, detail: str) -> None:
         self.state = state
         self.state_detail = detail
-        self._emit("status", state=state, detail=detail)
+        address = self._device_address if state == "connected" and self._source_kind == "ble" else None
+        self._emit("status", state=state, detail=detail, device_address=address)
 
     # ------------------------------------------------------------------
     # 数据源：内部实现（都在引擎线程执行）
@@ -313,18 +314,17 @@ class Engine:
         task = self._run_task
         if self._stop_event is not None:
             self._stop_event.set()
-        if task is not None and not task.done():
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                task.cancel()
-                try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-                except Exception:  # noqa: BLE001
-                    pass
-            except Exception:  # noqa: BLE001
-                pass
-        self._run_task = None
+        if task is None:
+            return
+        _, pending = await asyncio.wait({task}, timeout=timeout)
+        if pending:
+            task.cancel()
+            _, pending = await asyncio.wait({task}, timeout=2.0)
+            if pending:
+                raise TimeoutError("数据源未能停止，请稍后重试。")
+        if self._run_task is task:
+            self._run_task = None
+            self._status("stopped", "已停止")
 
     async def _async_start_source(
         self,
@@ -369,14 +369,10 @@ class Engine:
         """后台扫描设备，结果通过 ``devices`` 事件返回。"""
 
         async def _impl() -> None:
-            self.last_error = None
-            self._status("scanning", f"正在扫描附近蓝牙设备（{timeout:.0f} 秒）…")
             try:
                 devices = await ble.scan_devices(timeout=timeout, include_all=include_all)
             except Exception as exc:  # noqa: BLE001
-                self._status(STATE_ERROR, f"扫描失败：{exc}")
-                self._emit("error", message=self._bluetooth_hint(exc))
-                self._emit("devices", devices=[])
+                self._emit("devices", devices=[], error=self._bluetooth_hint(exc))
                 return
             if devices:
                 hr_count = sum(1 for d in devices if d.has_heart_rate)
@@ -385,8 +381,7 @@ class Engine:
                     detail += "。没有 ♥ 标记也可以选择设备连接后检查心率服务。"
             else:
                 detail = "没有扫描到任何设备。请确认电脑蓝牙已打开、手表已开启「心率广播」。"
-            self._status(STATE_IDLE, detail)
-            self._emit("devices", devices=devices)
+            self._emit("devices", devices=devices, detail=detail)
 
         self._dispatch(_impl)
 

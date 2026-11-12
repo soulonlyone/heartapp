@@ -148,15 +148,14 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 7. 数据与隐私（红线）
 
 - **心率是个人健康数据**，`data/heartrate.db` 已在 `.gitignore` 里，**绝不能提交**
-- 数据目录在 exe / 源码旁边（`paths.app_dir()`），**不是** `_MEIPASS`
+- 普通 EXE 将数据存入 `%LOCALAPPDATA%\HeartApp`，便携版和源码使用就地 `data`
 - 不要在任何日志里打印完整心率时间序列
 - 签名私钥（`.pfx` / `*.cer` 私钥证书）绝不入库
 
 ## 8. 打包相关的坑
 
-- 单文件版必须 `--runtime-tmpdir .`：用户 `%TEMP%` 的 ACL 被改坏了，
-  PyInstaller 解压到系统临时目录会失败（`Could not create temporary directory`）
-  → 改成解压到 exe 旁边
+- 单文件版使用系统临时目录解包。临时目录 ACL 异常时可用无需解包的便携版。
+- 便携 ZIP 的每个 EXE 旁保留 `heartapp-portable` 标记，数据库保存在各自的 `data` 目录。
 - 打包后要签名（`tools/sign_exe.ps1`，`build_exe.py` 会自动调）
 - **`.ps1` 脚本必须存成 UTF-8 with BOM**：Windows PowerShell 5.1 读无 BOM 文件会按
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意

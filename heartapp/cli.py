@@ -15,15 +15,16 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
 from . import APP_NAME, __version__
 from .metrics import format_duration
-from .paths import cli_hint, default_db_path, default_export_path
+from .paths import cli_hint, cli_db_path, default_export_path
 from .simulator import DEFAULT_PROFILE, PROFILES
-from .store import HeartRateStore
+from .store import HeartRateStore, RecordingAlreadyOpenError, recording_lock
 
 BLE_TIPS = """
 如果找不到手表，按顺序检查：
@@ -120,10 +121,18 @@ def cmd_probe(args: argparse.Namespace) -> int:
 
 
 def cmd_record(args: argparse.Namespace) -> int:
+    db_path = Path(args.db) if args.db else cli_db_path()
+    try:
+        with recording_lock(db_path), closing(HeartRateStore(db_path)) as store:
+            return _record(args, db_path, store)
+    except RecordingAlreadyOpenError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+
+def _record(args: argparse.Namespace, db_path: Path, store: HeartRateStore) -> int:
     from .engine import Engine
 
-    db_path = Path(args.db) if args.db else default_db_path()
-    store = HeartRateStore(db_path)
     store.close_stale_sessions()
     engine = Engine(store)
     engine.start()
@@ -206,7 +215,6 @@ def cmd_record(args: argparse.Namespace) -> int:
         path = store.export_csv(session_id, target)
         print(f"\nCSV 已导出：{path}")
 
-    store.close()
     return 0
 
 
@@ -242,7 +250,7 @@ def print_report(stats: Any) -> None:
 
 
 def cmd_sessions(args: argparse.Namespace) -> int:
-    db_path = Path(args.db) if args.db else default_db_path()
+    db_path = Path(args.db) if args.db else cli_db_path()
     store = HeartRateStore(db_path)
     rows = store.list_sessions(limit=args.limit)
     if not rows:
@@ -270,7 +278,7 @@ def cmd_sessions(args: argparse.Namespace) -> int:
 
 
 def cmd_export(args: argparse.Namespace) -> int:
-    db_path = Path(args.db) if args.db else default_db_path()
+    db_path = Path(args.db) if args.db else cli_db_path()
     store = HeartRateStore(db_path)
     session = store.get_session(args.session_id)
     if session is None:

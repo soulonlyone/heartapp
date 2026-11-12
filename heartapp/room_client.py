@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Optional
 
-from .room_protocol import VERSION, decode, encode, room_code, server_url
+from .room_protocol import DEFAULT_ROOM_SIZE, VERSION, decode, encode, room_code, server_url
 
 
 class RoomClient:
@@ -107,13 +107,17 @@ class RoomClient:
                         return
                     if welcome.get("type") != "login_ok" or welcome.get("version") != VERSION:
                         raise ValueError("联机协议不兼容")
+                    capacity = welcome.get("capacity", DEFAULT_ROOM_SIZE)
+                    if type(capacity) is not int or capacity < 1:
+                        raise ValueError("服务器房间容量无效")
                     old_token = token
                     token = welcome["resume_token"]
                     logged, retry, in_room = True, 0, False
                     with self._lock:
                         leaving = self._leave_requested
                     self._emit(generation, "server_login", resumed=old_token == token and bool(token),
-                               self_id=welcome["self_id"], room=welcome.get("room", ""), leaving=leaving)
+                               self_id=welcome["self_id"], room=welcome.get("room", ""), leaving=leaving,
+                               capacity=capacity)
                     next_send, last_sharing = 0.0, None
                     while not stop.is_set():
                         with self._lock:
@@ -136,6 +140,10 @@ class RoomClient:
                             return
                         if packet.get("type") == "welcome":
                             room_code(packet["room"])
+                            capacity = packet.get("capacity", capacity)
+                            if type(capacity) is not int or capacity < 1:
+                                raise ValueError("服务器房间容量无效")
+                            packet["capacity"] = capacity
                             in_room = True
                             with self._lock:
                                 leaving = self._leave_requested
@@ -157,7 +165,7 @@ class RoomClient:
                             self._emit(generation, "server_rooms", rooms=rooms, total=packet.get("total", len(rooms)))
                         if packet.get("type") == "snapshot":
                             members = packet.get("members")
-                            if not isinstance(members, list) or len(members) > 4 or any(not isinstance(m, dict) for m in members):
+                            if not isinstance(members, list) or len(members) > capacity or any(not isinstance(m, dict) for m in members):
                                 raise ValueError("房间数据无效")
                             self._emit(generation, "room_snapshot", members=members)
                     await socket.send(encode(dict(type="logout")))

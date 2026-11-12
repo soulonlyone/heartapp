@@ -7,17 +7,14 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import traceback
 from pathlib import Path
+from typing import Optional
 
 
-def _write_crash_log(exc: BaseException) -> Path:
-    try:
-        from heartapp.paths import app_dir
-
-        target = app_dir() / "启动错误.log"
-    except Exception:  # noqa: BLE001
-        target = Path("heartapp_crash.log")
+def _write_crash_log(exc: BaseException) -> Optional[Path]:
+    from heartapp.paths import data_dir
 
     text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     text = (
@@ -30,10 +27,18 @@ def _write_crash_log(exc: BaseException) -> Path:
         + text
     )
     try:
+        target = data_dir() / "启动错误.log"
         target.write_text(text, encoding="utf-8")
-    except Exception:  # noqa: BLE001
-        pass
-    return target
+        return target
+    except OSError:
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix="HeartApp-", suffix=".log", mode="w", encoding="utf-8", delete=False
+            ) as log:
+                log.write(text)
+                return Path(log.name)
+        except OSError:
+            return None
 
 
 def _report(exc: BaseException) -> None:
@@ -42,10 +47,11 @@ def _report(exc: BaseException) -> None:
         from PySide6.QtWidgets import QApplication, QMessageBox
 
         app = QApplication.instance() or QApplication([])
+        detail = f"完整信息已写入：\n{log}" if log else "无法写入启动日志。"
         QMessageBox.critical(
             None,
             "心率记录仪 启动失败",
-            f"{type(exc).__name__}: {exc}\n\n完整信息已写入：\n{log}",
+            f"{type(exc).__name__}: {exc}\n\n{detail}",
         )
     except Exception:  # noqa: BLE001
         pass

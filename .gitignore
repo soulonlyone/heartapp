@@ -19,6 +19,7 @@ data/
 *.db-journal
 *.db-wal
 *.db-shm
+*.recording.lock
 *.sqlite
 *.sqlite3
 *.sqlite-wal

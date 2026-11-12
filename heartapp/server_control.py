@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from .lobby import Relay
 from .relay import start_server
-from .room_protocol import server_url
+from .room_protocol import MAX_ROOM_SIZE, server_url
 
 
 @dataclass(frozen=True)
@@ -29,11 +29,11 @@ class ServerSettings:
         for value, low, high, message in (
             (self.port, 1, 65535, "端口应为 1～65535。"),
             (self.max_clients, 1, 10000, "连接上限应为 1～10000。"),
-            (self.room_size, 1, 4, "房间人数应为 1～4。"),
+            (self.room_size, 1, MAX_ROOM_SIZE, f"房间人数应为 1～{MAX_ROOM_SIZE}。"),
         ):
             if type(value) is not int or not low <= value <= high:
                 raise ValueError(message)
-        if self.public_url and not server_url(self.public_url).startswith("wss://"):
+        if self.public_url and not self.public_address.startswith("wss://"):
             raise ValueError("公网地址请填写 https:// 或 wss:// 地址。")
 
     @property
@@ -42,7 +42,10 @@ class ServerSettings:
 
     @property
     def public_address(self) -> str:
-        return server_url(self.public_url) if self.public_url else ""
+        value = self.public_url.strip()
+        if not value:
+            return ""
+        return server_url(value if "://" in value else "wss://" + value)
 
 
 def load_settings(path: Path) -> tuple:

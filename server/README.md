@@ -17,34 +17,56 @@ Linux/Docker 独立说明已覆盖环境安装、首次部署、配置、验收�
 
 ## 一行部署（Linux）
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
-```
-
-等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
-最终把代码装到 `/opt/heartapp-relay` 并注册 systemd 服务 `heartapp-relay`。
-参数会原样转发给安装脚本：
+先在服务器准备好 Python 3.9+、venv、curl 和 tar，使用 SSH 终端执行。
 
 ```sh
-# 指定端口与连接上限
-curl -fsSL .../server/deploy.sh | sudo bash -s -- --password '口令' --port 9000 --max-clients 50
-
-# 固定版本
-... | sudo bash -s -- --password '口令' --version v1.2.0
-
-# 只看它会做什么，不真装
-... | sudo bash -s -- --dry-run --password '口令'
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-不放心管道安装，可以先下载检查：
+安装向导会依次提示设置密码（隐藏输入并再次确认）、选择端口（默认 8765）、
+确认安装。确认后下载包中的安装器会创建运行用户、虚拟环境和 systemd 服务，
+安装到 `/opt/heartapp-relay` 并开机启动。密码保存在权限为 600 的
+`/etc/heartapp-relay.env`，屏幕上不会回显密码。
+
+再次安装会读取已有配置。密码与端口处直接回车可保留原值，确认后重启服务。
+取消安装会保留原配置。服务重启会清空内存中的临时房间。
+
+安装后运行管理菜单。
+
+```sh
+sudo heartapp-server
+```
+
+菜单支持查看状态、启动、停止、重启、修改密码、修改端口和查看最近日志。
+修改密码或端口时，确认保存后才重启。修改端口还需同步调整防火墙、云安全组、
+反向代理和客户端地址。
+
+默认监听 `0.0.0.0:8765`，朋友可填写 `ws://服务器IP:8765`。
+位于家庭路由器后的服务器需要端口转发；公网加 TLS 反向代理后使用 `wss://域名`。
+可用 `--host 127.0.0.1` 预设仅本机监听。
+
+```sh
+# 指定版本并进入向导
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --version v<版本>
+
+# 只下载解压，不安装
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --dry-run
+```
+
+自动化部署可加 `--non-interactive`。首次必须提供 `--password`，后续默认沿用旧配置。
+密码参数可能出现在 shell 历史和进程列表中，手动安装请使用默认向导。
+
+也可以下载后检查脚本，再运行。
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
 less deploy.sh
-sudo bash deploy.sh --password '你的口令'
+sudo bash deploy.sh
 ```
 
-服务默认只监听本机 `127.0.0.1:8765`，公网请在前面加 HTTPS / WSS 反向代理。
+此交互流程需要包含 `server/manage-linux.py` 的新版 Linux Release。
+旧版发布包需更新后才能使用本流程。
+
 
 ## 直接下载现成的包
 
@@ -200,7 +222,7 @@ python -m heartapp.relay --host 0.0.0.0 --port 8765
 | `--host` | `127.0.0.1` | 监听地址；局域网/公网要 `0.0.0.0`，IPv6 用 `::` |
 | `--port` | `8765` | 监听端口 |
 | `--max-clients` | `100` | 总连接上限（1–10000） |
-| `--room-size` | `4` | 每个房间人数（1–4） |
+| `--room-size` | `4` | 每房间容量（1–128，受总连接上限约束） |
 | `--cert` / `--key` | 无 | 直接启用 TLS，两个必须一起给 |
 
 访问密码走环境变量：
@@ -247,7 +269,7 @@ Nginx 片段见 [`nginx.conf.example`](nginx.conf.example)。要点：
 
 - **协议 v2**：登录服务器与创建 / 加入 / 退出房间分离。客户端与服务端必须一起升级，
   版本不兼容时会明确提示。v1 不再兼容。
-- 每房间最多 **4 人**；客户端每秒发一次当前心率，**关闭共享时不发送数值**。
+- 每房间默认 **4 人**，可由服务器调整；客户端每秒发一次当前心率，**关闭共享时不发送数值**。
 - 断流 5 秒后数值为空，不把旧值当实时；模拟来源保留标识。
 - 主动退房 / 退出服务器立即移除成员，无成员房间删除。
   网络断开保留 **30 秒重连席位**，凭仅在内存的随机会话令牌恢复原身份和房间。

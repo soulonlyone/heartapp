@@ -8,34 +8,56 @@
 
 ## 一行部署（Linux）
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --password '你的口令'
-```
-
-等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
-最终把代码装到 `/opt/heartapp-relay` 并注册 systemd 服务 `heartapp-relay`。
-参数会原样转发给安装脚本：
+先在服务器准备好 Python 3.9+、venv、curl 和 tar，使用 SSH 终端执行。
 
 ```sh
-# 指定端口与连接上限
-curl -fsSL .../server/deploy.sh | sudo bash -s -- --password '口令' --port 9000 --max-clients 50
-
-# 固定版本
-... | sudo bash -s -- --password '口令' --version v1.2.0
-
-# 只看它会做什么，不真装
-... | sudo bash -s -- --dry-run --password '口令'
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-不放心管道安装，可以先下载检查：
+安装向导会依次提示设置密码（隐藏输入并再次确认）、选择端口（默认 8765）、
+确认安装。确认后下载包中的安装器会创建运行用户、虚拟环境和 systemd 服务，
+安装到 `/opt/heartapp-relay` 并开机启动。密码保存在权限为 600 的
+`/etc/heartapp-relay.env`，屏幕上不会回显密码。
+
+再次安装会读取已有配置。密码与端口处直接回车可保留原值，确认后重启服务。
+取消安装会保留原配置。服务重启会清空内存中的临时房间。
+
+安装后运行管理菜单。
+
+```sh
+sudo heartapp-server
+```
+
+菜单支持查看状态、启动、停止、重启、修改密码、修改端口、修改每房人数和查看最近日志。
+修改密码或端口时，确认保存后才重启。修改端口还需同步调整防火墙、云安全组、
+反向代理和客户端地址。
+
+默认监听 `0.0.0.0:8765`，朋友可填写 `ws://服务器IP:8765`。
+位于家庭路由器后的服务器需要端口转发；公网加 TLS 反向代理后使用 `wss://域名`。
+可用 `--host 127.0.0.1` 预设仅本机监听。
+
+```sh
+# 指定版本并进入向导
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --version v<版本>
+
+# 只下载解压，不安装
+curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash -s -- --dry-run
+```
+
+自动化部署可加 `--non-interactive`。首次必须提供 `--password`，后续默认沿用旧配置。
+密码参数可能出现在 shell 历史和进程列表中，手动安装请使用默认向导。
+
+也可以下载后检查脚本，再运行。
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
 less deploy.sh
-sudo bash deploy.sh --password '你的口令'
+sudo bash deploy.sh
 ```
 
-服务默认只监听本机 `127.0.0.1:8765`，公网请在前面加 HTTPS / WSS 反向代理。
+此交互流程需要包含 `server/manage-linux.py` 的新版 Linux Release。
+旧版发布包需更新后才能使用本流程。
+
 
 ## 1. 连接服务器、准备环境
 
@@ -63,55 +85,39 @@ Python 应为 3.9 或更高。若系统没有 systemd，请使用 Docker 方案�
 克隆仓库后进入项目根目录；私有仓库需要有读取权限，不要把访问令牌写进命令 URL：
 
 ```sh
-git clone --branch codex/server-control-panel https://github.com/soulonlyone/heartapp.git heartapp
+git clone --branch main https://github.com/soulonlyone/heartapp.git heartapp
 cd heartapp
 bash server/install-linux.sh --help
 ```
 
-上例使用当前开发分支，含新面板文档和完整帮助；合并后可替换为 main，正式部署宜固定
-经过验收的发布标签或提交。已有仓库不必重复 clone，先确认所在分支与版本。
+正式部署宜固定经过验收的发布标签或提交。已有仓库不必重复 clone，先确认所在分支与版本。
 也可解压 Linux 分发包，进入同时包含 `heartapp/`、`server/` 的根目录。
 
 ## 3. 安装服务、配置密码
 
-使用仓库源码，或解压 Linux 分发包，进入包含 `heartapp/` 和 `server/` 的根目录：
+在源码仓库或 Linux 分发包根目录执行。
 
 ```sh
-sudo bash server/install-linux.sh --port 8765 --max-clients 20 --room-size 4 --host 127.0.0.1
+sudo bash server/install-linux.sh
 ```
 
-上例只监听本机，适合在前面放 Nginx/Caddy 做 WSS。局域网直连时改成 `--host 0.0.0.0`。
-脚本会创建独立系统用户、虚拟环境、systemd 服务。它不是发行版包管理器安装包，
-需要系统已安装 Python 及 venv 支持；Debian/Ubuntu 可先安装 `python3`、`python3-venv`。
+跟随向导输入密码、确认密码、选择端口并确认安装。回车使用默认端口，
+升级时回车保留现有密码和端口。
 
-安装后立即设置服务器密码：
+使用反向代理时，可以预设仅本机监听。
 
 ```sh
-sudoedit /etc/heartapp-relay.env
+sudo bash server/install-linux.sh --host 127.0.0.1
 ```
 
-将密码写入下面的字段，再重启服务。值中如有空格、引号或反斜杠，应按 systemd
-EnvironmentFile 的语法正确引用；初次部署可使用随机英文字母、数字组成的口令。
-
-```ini
-HEARTAPP_RELAY_PASSWORD=替换为你的随机口令
-```
-
-安装脚本默认未设置密码。在设置完成前不要对公网放行，建议沿用上面的仅本机监听。
-也可通过安装脚本的 `--password` 参数设置，但口令可能短暂出现在进程命令行中。
-
-可以先在终端生成随机密码，再粘贴进配置文件：
+安装完成后检查服务。
 
 ```sh
-python3 -c 'import secrets; print(secrets.token_hex(16))'
-sudo systemctl restart heartapp-relay
 sudo systemctl status heartapp-relay --no-pager
 curl --fail http://127.0.0.1:8765/healthz
 ```
 
-注意先完成密码文件编辑，再 restart。健康检查返回 `HeartApp relay v2 OK` 后，
-再配置朋友的访问入口。本人在服务器上运行的客户端可用 `ws://127.0.0.1:8765`；
-朋友不能拿这个回环地址访问你的服务器。
+若修改过端口或监听地址，请相应调整健康检查地址。
 
 ## 4. 配置在哪里、如何修改
 
@@ -119,24 +125,17 @@ curl --fail http://127.0.0.1:8765/healthz
 |---|---|
 | 服务代码 | `/opt/heartapp-relay/heartapp/` |
 | Python 环境 | `/opt/heartapp-relay/venv/` |
-| 密码配置 | `/etc/heartapp-relay.env`，权限 600 |
+| 服务配置和密码 | `/etc/heartapp-relay.env`，权限 600 |
 | systemd 单元 | `/etc/systemd/system/heartapp-relay.service` |
+| 管理入口 | `/usr/local/bin/heartapp-server` |
 
-密码更新只需修改 env 并重启。调整端口、监听地址、人数上限可以修改单元中的
-`ExecStart` 参数，随后执行 `systemctl daemon-reload` 和服务重启。
-重新执行安装脚本会覆盖配置和单元文件；升级前先备份并准备原来的参数及密码。
+运行 `sudo heartapp-server`，按菜单修改密码、端口或每房人数。新配置确认保存后生效，
+并重启服务。其他参数可以重新运行安装向导并传入 `--host`、`--max-clients`、
+`--room-size`，未显式修改的设置会保留。配置文件由管理器引用和转义，
+包含空格、引号、反斜杠的密码也会原样保留。
 
-修改监听地址、端口、人数的具体步骤：
-
-```sh
-sudoedit /etc/systemd/system/heartapp-relay.service
-sudo systemctl daemon-reload
-sudo systemctl restart heartapp-relay
-sudo systemctl status heartapp-relay --no-pager
-```
-
-编辑 `ExecStart` 中的 `--host`、`--port`、`--max-clients`、`--room-size`；
-不要删除其他加固配置。监听和端口改变后，同步修改客户端地址、代理或防火墙设置。
+`heartapp-server --help`、`bash server/install-linux.sh --help`、
+`bash server/deploy.sh --help` 均可查看帮助。
 
 ## 5. 日常运维
 

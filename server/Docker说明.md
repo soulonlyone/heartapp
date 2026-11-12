@@ -142,7 +142,8 @@ Docker 发布端口可能绕过部分 ufw 规则，不能只凭 ufw 的状态判
 |---|---|---|
 | `HEARTAPP_BIND_IP` | 127.0.0.1 | 宿主机监听地址；不是发给朋友的地址 |
 | `HEARTAPP_PORT` | 8765 | 宿主机端口，容器内部仍为 8765 |
-| `HEARTAPP_MAX_CLIENTS` | 20 | 总连接上限，默认每房间仍为 4 人 |
+| `HEARTAPP_MAX_CLIENTS` | 20 | 总连接上限 |
+| `HEARTAPP_ROOM_SIZE` | 4 | 每房间容量，最高 128，受总连接上限约束 |
 | `HEARTAPP_RELAY_PASSWORD` | 空 | 整台服务器的访问密码，部署前设置 |
 
 Compose 默认限制 0.5 CPU、384MiB，容器为非 root 用户、只读根文件系统，

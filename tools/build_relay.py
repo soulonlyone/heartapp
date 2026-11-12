@@ -113,6 +113,7 @@ def build_linux_tarball() -> Path:
             _add(tar, ROOT / "heartapp" / name, f"{prefix}/heartapp/{name}")
         _add(tar, ROOT / "server" / "requirements.txt", f"{prefix}/server/requirements.txt")
         _add(tar, ROOT / "server" / "install-linux.sh", f"{prefix}/server/install-linux.sh", 0o755)
+        _add(tar, ROOT / "server" / "manage-linux.py", f"{prefix}/server/manage-linux.py")
         _add(tar, ROOT / "server" / "README.md", f"{prefix}/server/README.md")
         _add(tar, ROOT / "server" / ".env.example", f"{prefix}/server/.env.example")
         for name in SERVER_GUIDES:
