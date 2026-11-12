@@ -34,29 +34,47 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-PORTABLE_MARKER = "heartapp-portable"
-
-
 def uses_profile_data() -> bool:
-    return is_frozen() and not (app_dir() / PORTABLE_MARKER).is_file()
+    """是否退回了用户目录（仅当程序目录不可写）。"""
+    return data_dir() != app_dir() / "data"
 
 
 def data_dir() -> Path:
-    """普通 EXE 使用用户目录，便携版和源码使用程序旁的 data。"""
-    if uses_profile_data():
-        local = os.environ.get("LOCALAPPDATA")
-        target = Path(local) / "HeartApp" if local else Path.home() / "HeartApp"
-    else:
-        target = app_dir() / "data"
-    target.mkdir(parents=True, exist_ok=True)
-    return target
+    """数据目录：放在程序旁边，方便直接找到、直接备份。
+
+    便携版、源码运行、单文件 exe **一律**用 ``程序目录/data``，不在用户目录里
+    另建一套文件。只有程序目录不可写（装在 Program Files、只读介质等）时，
+    才退回 ``%LOCALAPPDATA%\\HeartApp``。
+    """
+    primary = app_dir() / "data"
+    if _make_writable(primary):
+        return primary
+    local = os.environ.get("LOCALAPPDATA")
+    fallback = (Path(local) if local else Path.home()) / "HeartApp"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def _make_writable(target: Path) -> bool:
+    """建目录并真正试写一次。mkdir 成功不代表能写文件（ACL 可能只给读）。"""
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / ".write-test"
+        probe.write_bytes(b"")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
 
 
 def legacy_db_path(target: Path) -> Optional[Path]:
-    if uses_profile_data():
-        for source in (app_dir() / "data/heartrate.db", Path.home() / "HeartApp/heartrate.db"):
-            if source.is_file() and source.resolve() != target.resolve():
-                return source
+    """更早的版本可能把库放在用户目录，找到就迁回程序旁边的 data。"""
+    local = os.environ.get("LOCALAPPDATA")
+    candidates = [Path(local) / "HeartApp/heartrate.db"] if local else []
+    candidates.append(Path.home() / "HeartApp/heartrate.db")
+    for source in candidates:
+        if source.is_file() and source.resolve() != target.resolve():
+            return source
     return None
 
 

@@ -133,7 +133,11 @@ log "创建虚拟环境并安装依赖（只有 websockets）"
       || die "依赖安装失败，可手动执行：$APP_DIR/venv/bin/pip install -r $APP_DIR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple"
   }
 
-chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
+# 安装目录归 root 所有，服务用户只读、只执行。
+# 管理脚本（sudo heartapp-server）会用这里的 Python 解释器执行；
+# 如果目录归服务用户所有，服务被攻陷后可以替换解释器、等管理员执行时拿到 root。
+chown -R root:root "$APP_DIR"
+chmod -R go-w "$APP_DIR"
 
 # 管理器跟随服务端安装，终端菜单不依赖额外 Python 包。
 install -m 644 "$SRC_ROOT/server/manage-linux.py" "$APP_DIR/manage-linux.py"

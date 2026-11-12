@@ -39,6 +39,16 @@ ICON = ROOT / "heartapp.ico"
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 
+#: 单文件版的解压目录：`.` = exe 自己所在的目录。
+#:
+#: 默认解压到系统临时目录（%TEMP%）。部分机器上这会直接失败，PyInstaller 报
+#: `Could not create temporary directory!`，而且发生在 Python 代码运行之前，
+#: 连日志都留不下。本机实测连 hello-world 单文件版都会失败，改成解压到 exe
+#: 旁边就正常，所以必须显式指定。
+#:
+#: 便携版（文件夹版）不需要解包，不受此限制，是推荐的下载方式。
+RUNTIME_TMPDIR = "."
+
 EXCLUDES = [
     "matplotlib", "numpy", "pandas", "PIL", "pytest",
     "scipy", "IPython", "notebook", "setuptools", "pip",
@@ -125,6 +135,7 @@ def build_gui_onefile() -> int:
             "--onefile",
             "--windowed",
             "--exclude-module", "tkinter",
+            "--runtime-tmpdir", RUNTIME_TMPDIR,
             "--name", "HeartApp",
             "--add-data", f"{ICON};.",
             "--workpath", str(BUILD / "onefile_gui"),
@@ -139,6 +150,7 @@ def build_cli_onefile() -> int:
         [PYINSTALLER] + _base() + _excludes() + [
             "--onefile",
             "--console",
+            "--runtime-tmpdir", RUNTIME_TMPDIR,
             "--name", "HeartAppCLI",
             # 命令行版不含任何图形界面
             "--exclude-module", "tkinter",
@@ -227,8 +239,6 @@ def rename_onedir() -> bool:
     target.mkdir(parents=True)
 
     # 两个 exe 共享同一份 _internal 是不行的（打包内容不同），所以各自一个子目录
-    for folder in (gui_src, cli_src):
-        (folder / "heartapp-portable").touch()
     shutil.move(str(gui_src), str(target / "图形界面版"))
     shutil.move(str(cli_src), str(target / "命令行版"))
     print(f"  合并为 {target.name}\\图形界面版\\{GUI_EXE}")

@@ -9,7 +9,8 @@ from heartapp import paths
 
 
 class TestClientPaths(unittest.TestCase):
-    def test_frozen_client_and_portable_paths(self):
+    def test_frozen_client_stores_data_next_to_exe(self):
+        """打包后的客户端一律把数据放在 exe 旁边，不在用户目录里另建一套。"""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             exe_dir = root / "下载"
@@ -19,10 +20,25 @@ class TestClientPaths(unittest.TestCase):
                 patch.object(paths, "app_dir", return_value=exe_dir),
                 patch.dict("os.environ", {"LOCALAPPDATA": str(root / "profile")}),
             ):
-                self.assertEqual(paths.default_db_path(), root / "profile/HeartApp/heartrate.db")
-                self.assertEqual(list(exe_dir.iterdir()), [])
-                (exe_dir / paths.PORTABLE_MARKER).touch()
                 self.assertEqual(paths.default_db_path(), exe_dir / "data/heartrate.db")
+                self.assertTrue((exe_dir / "data").is_dir())
+                self.assertFalse((root / "profile").exists())
+
+    def test_falls_back_to_user_folder_when_exe_folder_is_read_only(self):
+        """exe 目录不可写（装在 Program Files 等）时才退回用户目录。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            exe_dir = root / "Program Files" / "HeartApp"
+            exe_dir.mkdir(parents=True)
+            with (
+                patch.object(paths, "is_frozen", return_value=True),
+                patch.object(paths, "app_dir", return_value=exe_dir),
+                patch.object(paths, "_make_writable", return_value=False),
+                patch.dict("os.environ", {"LOCALAPPDATA": str(root / "profile")}),
+            ):
+                self.assertEqual(
+                    paths.default_db_path(), root / "profile/HeartApp/heartrate.db"
+                )
 
     def test_migration_preserves_wal_and_refuses_to_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
