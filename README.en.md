@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
   | sudo bash
 ```
 
-The installer then asks for a password (**hidden input**), confirms the port and registers a systemd service.
+The installer then asks for a password (shown as `*`, never as plain text), confirms the port and registers a systemd service.
 If the server cannot reach GitHub, add a mirror prefix: `--version v1.4.0 --mirror https://ghfast.top/`
 `HEARTAPP_INSTALL_PASSWORD` — passing it on the command line leaves it in shell history.
 

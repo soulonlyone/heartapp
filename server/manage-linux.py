@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 from contextlib import contextmanager
 import getpass
 import os
@@ -113,6 +114,62 @@ def terminal():
         handle.close()
 
 
+def _masked_input(prompt: str) -> str:
+    """读一行并显示 *。
+
+    getpass 默认完全不回显，用户看不出自己输了几位。这里在 POSIX 终端上用
+    cbreak 模式逐字符读取、每个字符打印一个 *；非终端环境（管道、测试）
+    或非 POSIX 平台仍然退回 getpass，保证行为一致。
+    """
+    stream = sys.stdin
+    fd = -1
+    try:
+        fd = stream.fileno()
+        interactive = stream.isatty()
+    except (AttributeError, OSError, ValueError):
+        interactive = False
+    if not interactive:
+        return getpass.getpass(prompt)
+
+    try:
+        import termios
+        import tty
+    except ImportError:  # 非 POSIX
+        return getpass.getpass(prompt)
+
+    stream.write(prompt)
+    stream.flush()
+    previous = termios.tcgetattr(fd)
+    typed: list = []
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='ignore')
+    try:
+        tty.setcbreak(fd)
+        while True:
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                raise EOFError
+            for char in decoder.decode(chunk):
+                if char in ('\r', '\n'):
+                    stream.write('\n')
+                    stream.flush()
+                    return ''.join(typed)
+                if char in ('\x7f', '\x08'):      # 退格
+                    if typed:
+                        typed.pop()
+                        stream.write('\b \b')
+                        stream.flush()
+                    continue
+                if char == '\x04' and not typed:  # Ctrl-D
+                    raise EOFError
+                if char == '\x03':                # Ctrl-C
+                    raise KeyboardInterrupt
+                typed.append(char)
+                stream.write('*')
+                stream.flush()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, previous)
+
+
 def read_password(existing=''):
     # 这是「客户端登录服务器」用的访问密码，不是房间密码；安装时必须设置。
     prompt = (
@@ -121,7 +178,7 @@ def read_password(existing=''):
         else '服务器访问密码（客户端在「联机房间」登录时填它；输入时不显示）：'
     )
     while True:
-        value = getpass.getpass(prompt)
+        value = _masked_input(prompt)
         if not value and existing:
             return existing
         candidate = dict(DEFAULTS, password=value)
@@ -130,7 +187,7 @@ def read_password(existing=''):
         except ValueError as exc:
             print(exc)
             continue
-        if value == getpass.getpass('再输入一次确认：'):
+        if value == _masked_input('再输入一次确认：'):
             return value
         print('两次密码不一致，请重新输入。')
 
