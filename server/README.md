@@ -53,6 +53,9 @@ curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/de
 
 国内直连 `github.com` 常超时（`Failed to connect to github.com port 443`）。**脚本已经自动处理**：
 
+- 镜像站常常拿不到 Release 里的 `SHA256SUMS.txt`，此时自动改用仓库里的
+  `server/checksums/v<版本>.txt`（与脚本同源，不经过镜像）
+
 - 直连失败会依次尝试 `ghfast.top`、`gh-proxy.com`、`ghproxy.net` 三个镜像
 - `api.github.com` 不可达时，改为从仓库的 `server/LATEST` 读取版本号
 

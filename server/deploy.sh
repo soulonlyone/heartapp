@@ -24,7 +24,8 @@
 #   --dry-run            只下载 / 校验 / 解压并打印下一步命令，不真正安装
 #
 # 环境变量：
-#   HEARTAPP_BASE_URL    覆盖下载地址前缀（测试或镜像站用）
+#   HEARTAPP_BASE_URL          覆盖下载地址前缀（测试或镜像站用）
+#   HEARTAPP_CHECKSUM_BASE_URL 覆盖校验和来源前缀（默认取仓库里的 server/checksums）
 #
 # 流程：下载 Release 里的服务端压缩包 → 校验 SHA256 → 解压 → 运行其中的 install-linux.sh
 
@@ -136,12 +137,25 @@ fetch "$BASE/$ASSET" "$TMP/$ASSET" || die "下载失败：直连和镜像都没�
   3) 换一台能访问 GitHub 的机器运行服务端（只需 Python 3.9+ 和 websockets）"
 
 # ---- 校验和 ----
-EXPECTED=""
-if fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt" quiet; then
+# 优先用和包同源的 SHA256SUMS.txt；镜像站经常拿不到这种小文件，
+# 再退回仓库里的 server/checksums/v<version>.txt（与本脚本同源，不经过镜像）。
+CHECKSUM_BASE="${HEARTAPP_CHECKSUM_BASE_URL:-https://raw.githubusercontent.com/${REPO}/main/server/checksums}"
+
+pick_expected() {
     # sha256sum 在不同平台输出 "hash  file" 或 "hash *file"（二进制标记），两种都要认。
     # 用 `|| true` 兜住：匹配不到时不能让 set -e 把整个脚本杀掉。
-    EXPECTED="$(awk -v f="$ASSET" '$2 == f || $2 == "*" f { print $1; exit }' \
-        "$TMP/SHA256SUMS.txt" 2>/dev/null || true)"
+    awk -v f="$ASSET" '$2 == f || $2 == "*" f { print $1; exit }' "$1" 2>/dev/null || true
+}
+
+EXPECTED=""
+if fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt" quiet; then
+    EXPECTED="$(pick_expected "$TMP/SHA256SUMS.txt")"
+fi
+if [ -z "$EXPECTED" ]; then
+    if fetch "$CHECKSUM_BASE/${TAG}.txt" "$TMP/checksums.txt" quiet; then
+        EXPECTED="$(pick_expected "$TMP/checksums.txt")"
+        [ -n "$EXPECTED" ] && say "校验和取自仓库 server/checksums/${TAG}.txt"
+    fi
 fi
 if [ -n "$EXPECTED" ] && [ -n "$SHA_TOOL" ]; then
     if [ "$SHA_TOOL" = "sha256sum" ]; then
@@ -156,10 +170,10 @@ elif [ -z "${EXPECTED:-}" ]; then
     if [ "$NO_VERIFY" -eq 1 ]; then
         say "警告：没取到 ${ASSET} 的校验和，按 --no-verify 继续安装"
     else
-        die "没取到 ${ASSET} 的校验和，无法确认安装包完整。可任选其一：
-  1) 换镜像重试：--mirror https://gh-proxy.com/
-  2) 确认来源可信后跳过校验：--no-verify
-  3) 在能上 GitHub 的电脑下载压缩包和 SHA256SUMS.txt，自行核对后手动安装"
+        die "没取到 ${ASSET} 的校验和（Release 附件与仓库 server/checksums 都没有）。可任选其一：
+  1) 确认来源可信后跳过校验：--no-verify
+  2) 换镜像重试：--mirror https://gh-proxy.com/
+  3) 在能上 GitHub 的电脑下载压缩包，用 Releases 页面的 SHA256SUMS.txt 核对后手动安装"
     fi
 elif [ -z "$SHA_TOOL" ]; then
     say "跳过 SHA256 校验：系统没有 sha256sum / shasum"
