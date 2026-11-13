@@ -193,7 +193,7 @@ def write_checksums(files: list[Path]) -> Path:
     for path in files:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {path.name}")
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    target.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
     return target
 
 

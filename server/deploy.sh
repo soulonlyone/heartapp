@@ -124,7 +124,6 @@ say "目标版本：$TAG"
 
 ASSET="HeartApp-Server-${TAG}-linux.tar.gz"
 BASE="${HEARTAPP_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
-[ -n "$MIRROR" ] && BASE="${MIRROR%/}/$BASE"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -140,7 +139,7 @@ EXPECTED=""
 if fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt" quiet; then
     # sha256sum 在不同平台输出 "hash  file" 或 "hash *file"（二进制标记），两种都要认。
     # 用 `|| true` 兜住：匹配不到时不能让 set -e 把整个脚本杀掉。
-    EXPECTED="$(awk -v f="$ASSET" '$2 == f || $2 == "*" f { print $1; exit }' \
+    EXPECTED="$(awk -v f="$ASSET" '{ sub(/\r$/, "") } $2 == f || $2 == "*" f { print $1; exit }' \
         "$TMP/SHA256SUMS.txt" 2>/dev/null || true)"
 fi
 if [ -n "$EXPECTED" ] && [ -n "$SHA_TOOL" ]; then
