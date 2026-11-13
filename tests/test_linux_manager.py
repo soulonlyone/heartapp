@@ -3,6 +3,7 @@ import argparse
 from contextlib import nullcontext
 import importlib.util
 import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -44,6 +45,47 @@ class TestLinuxManager(unittest.TestCase):
         self.assertEqual(settings['user'], 'custom')
         manager.save_settings(settings)
         self.assertEqual(manager.load_settings(), settings)
+
+    def test_masked_input_writes_prompt_to_stderr_not_stdin(self):
+        """terminal() 把 sys.stdin 换成只读的 /dev/tty：星号必须写到可写流。
+
+        回归：往 sys.stdin 写提示会抛 io.UnsupportedOperation: not writable，
+        安装向导直接报「操作未完成：not writable」。
+        """
+        import io
+        import types
+        from contextlib import redirect_stderr
+
+        class ReadOnlyStdin:
+            def fileno(self):
+                return 0
+
+            def isatty(self):
+                return True
+
+            def write(self, *_args, **_kwargs):
+                raise OSError('not writable')
+
+            def flush(self):
+                raise OSError('not writable')
+
+        fake_termios = types.SimpleNamespace(
+            tcgetattr=lambda fd: ['previous'],
+            tcsetattr=lambda fd, when, attrs: None,
+            TCSADRAIN=0,
+        )
+        fake_tty = types.SimpleNamespace(setcbreak=lambda fd: None)
+
+        captured = io.StringIO()
+        with patch.object(manager.sys, 'stdin', ReadOnlyStdin()), \
+                patch.dict(sys.modules, {'termios': fake_termios, 'tty': fake_tty}), \
+                patch.object(manager.os, 'read', side_effect=[b'a', b'b', b'\r']), \
+                redirect_stderr(captured):
+            self.assertEqual(manager._masked_input('密码：'), 'ab')
+
+        rendered = captured.getvalue()
+        self.assertIn('密码：', rendered)
+        self.assertIn('**', rendered)
 
     def test_rejects_short_repeated_and_common_passwords(self):
         for password in ("1234567", "aaaaaaaa", "password"):

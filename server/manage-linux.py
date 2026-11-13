@@ -154,8 +154,12 @@ def _masked_input(prompt: str) -> str:
     except ImportError:  # 非 POSIX
         return getpass.getpass(prompt)
 
-    stream.write(prompt)
-    stream.flush()
+    # 提示和星号必须写到「可写」的终端流：terminal() 只把 sys.stdin 换成了
+    # 只读打开的 /dev/tty，往它写会抛 io.UnsupportedOperation: not writable。
+    # getpass 也是写 stderr，交互时 stderr 就是终端。
+    echo = getattr(sys, 'stderr', None) or sys.stdout
+    echo.write(prompt)
+    echo.flush()
     previous = termios.tcgetattr(fd)
     typed: list = []
     decoder = codecs.getincrementaldecoder('utf-8')(errors='ignore')
@@ -167,22 +171,22 @@ def _masked_input(prompt: str) -> str:
                 raise EOFError
             for char in decoder.decode(chunk):
                 if char in ('\r', '\n'):
-                    stream.write('\n')
-                    stream.flush()
+                    echo.write('\n')
+                    echo.flush()
                     return ''.join(typed)
                 if char in ('\x7f', '\x08'):      # 退格
                     if typed:
                         typed.pop()
-                        stream.write('\b \b')
-                        stream.flush()
+                        echo.write('\b \b')
+                        echo.flush()
                     continue
                 if char == '\x04' and not typed:  # Ctrl-D
                     raise EOFError
                 if char == '\x03':                # Ctrl-C
                     raise KeyboardInterrupt
                 typed.append(char)
-                stream.write('*')
-                stream.flush()
+                echo.write('*')
+                echo.flush()
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, previous)
 
