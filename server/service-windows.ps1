@@ -61,7 +61,7 @@ function Write-ServiceLauncher {
         $quotedPassword = $AccessPassword.Replace("'", "''")
         $lines += "`$env:HEARTAPP_RELAY_PASSWORD = '$quotedPassword'"
     }
-    $lines += "& '$quotedPython' -m heartapp.relay --host 0.0.0.0 --port $ListenPort --max-clients $ClientLimit --room-size $RoomLimit"
+    $lines += "& '$quotedPython' -m heartapp.relay --allow-plaintext --host 0.0.0.0 --port $ListenPort --max-clients $ClientLimit --room-size $RoomLimit"
     $lines += 'exit $LASTEXITCODE'
     # Windows PowerShell 5.1 需要 BOM 才能可靠读取中文路径和密码。
     $encoding = New-Object System.Text.UTF8Encoding($true)

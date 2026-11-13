@@ -45,10 +45,15 @@ class TestLinuxManager(unittest.TestCase):
         manager.save_settings(settings)
         self.assertEqual(manager.load_settings(), settings)
 
+    def test_rejects_short_repeated_and_common_passwords(self):
+        for password in ("1234567", "aaaaaaaa", "password"):
+            with self.subTest(password=password), self.assertRaises(ValueError):
+                manager.validate(dict(manager.DEFAULTS, password=password))
+
     def test_cancel_install_does_not_write_config(self):
         args = argparse.Namespace(non_interactive=False)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
-                patch.object(manager.getpass, 'getpass', side_effect=['new', 'new']), \
+                patch.object(manager, '_masked_input', side_effect=['new-pass-1', 'new-pass-1']), \
                 patch('builtins.input', side_effect=['', 'n']):
             self.assertEqual(manager.configure(args), 1)
         self.assertFalse(manager.ENV_FILE.exists())
@@ -56,17 +61,17 @@ class TestLinuxManager(unittest.TestCase):
     def test_first_install_checks_password_and_port_then_saves(self):
         args = argparse.Namespace(non_interactive=False)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
-                patch.object(manager.getpass, 'getpass', side_effect=['one', 'two', 'three', 'three']), \
+                patch.object(manager, '_masked_input', side_effect=['one-pass-1', 'two-pass-1', 'three-pass', 'three-pass']), \
                 patch('builtins.input', side_effect=['invalid', '65536', '9002', 'y']):
             self.assertEqual(manager.configure(args), 0)
-        self.assertEqual(manager.load_settings()['password'], 'three')
+        self.assertEqual(manager.load_settings()['password'], 'three-pass')
         self.assertEqual(manager.load_settings()['port'], '9002')
 
     def test_upgrade_keeps_existing_values_on_enter(self):
         settings = dict(manager.DEFAULTS, port='9003', password='preserved')
         manager.save_settings(settings)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
-                patch.object(manager.getpass, 'getpass', return_value=''), \
+                patch.object(manager, '_masked_input', return_value=''), \
                 patch('builtins.input', side_effect=['', 'y']):
             self.assertEqual(manager.configure(argparse.Namespace(non_interactive=False)), 0)
         self.assertEqual(manager.load_settings(), settings)
@@ -78,19 +83,19 @@ class TestLinuxManager(unittest.TestCase):
         self.assertFalse(manager.ENV_FILE.exists())
 
     def test_atomic_write_failure_preserves_config(self):
-        settings = dict(manager.DEFAULTS, password='before')
+        settings = dict(manager.DEFAULTS, password='before-pw')
         manager.save_settings(settings)
         with patch.object(manager.os, 'replace', side_effect=OSError('disk full')):
             with self.assertRaises(OSError):
-                manager.save_settings(dict(settings, password='after'))
+                manager.save_settings(dict(settings, password='after-pw'))
         self.assertEqual(manager.load_settings(), settings)
         self.assertEqual(list(self.root.iterdir()), [manager.ENV_FILE])
 
     def test_edit_password_can_cancel_or_restart(self):
-        manager.save_settings(dict(manager.DEFAULTS, password='before'))
-        for confirmation, expected in (('n', 'before'), ('y', 'after')):
+        manager.save_settings(dict(manager.DEFAULTS, password='before-pw'))
+        for confirmation, expected in (('n', 'before-pw'), ('y', 'after-pw')):
             with patch.object(manager, 'terminal', return_value=nullcontext()), \
-                    patch.object(manager.getpass, 'getpass', side_effect=['after', 'after']), \
+                    patch.object(manager, '_masked_input', side_effect=['after-pw', 'after-pw']), \
                     patch('builtins.input', side_effect=['5', confirmation, '0']), \
                     patch.object(manager.subprocess, 'run') as run:
                 self.assertEqual(manager.menu(), 0)
@@ -98,7 +103,7 @@ class TestLinuxManager(unittest.TestCase):
             self.assertEqual(run.call_count, 1 if confirmation == 'y' else 0)
 
     def test_restart_failure_keeps_menu_available(self):
-        manager.save_settings(dict(manager.DEFAULTS, password='test'))
+        manager.save_settings(dict(manager.DEFAULTS, password='test-pass'))
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
                 patch('builtins.input', side_effect=['6', '9004', 'y', '0']), \
                 patch.object(manager.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'systemctl')):

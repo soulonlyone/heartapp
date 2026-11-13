@@ -26,7 +26,7 @@ RUN_USER=heartapp
 PORT=8765
 MAX_CLIENTS=20
 ROOM_SIZE=4
-BIND_HOST=0.0.0.0
+BIND_HOST=127.0.0.1
 PASSWORD=""
 PASSWORD_SET=0
 CONFIG_ARGS=()
@@ -39,7 +39,7 @@ usage() {
 HeartApp Linux 服务端安装器（systemd）
 用法：sudo bash server/install-linux.sh [参数]
 
-  --host ADDRESS       监听地址，默认 0.0.0.0；反向代理建议 127.0.0.1
+  --host ADDRESS       监听地址，默认 127.0.0.1；局域网直连才用 0.0.0.0
   --port PORT          服务端口，默认 8765
   --max-clients COUNT  总连接上限，默认 20
   --room-size COUNT    每房间人数 1～128，默认 4
@@ -152,6 +152,16 @@ exec /opt/heartapp-relay/venv/bin/python /opt/heartapp-relay/manage-linux.py "$@
 LAUNCHER
 chmod 755 /usr/local/bin/heartapp-server
 
+PLAINTEXT_FLAG=""
+case "$BIND_HOST" in
+    127.0.0.1|localhost|::1|"[::1]") ;;
+    *)
+        PLAINTEXT_FLAG=" --allow-plaintext"
+        log "注意：绑定 $BIND_HOST 且未启用 TLS，访问密码和心率会明文经过网络"
+        log "      仅适合可信局域网；公网请配置 HTTPS 反代并改用 --host 127.0.0.1"
+        ;;
+esac
+
 log "写入 systemd 服务 /etc/systemd/system/${SERVICE}.service"
 cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
 [Unit]
@@ -165,7 +175,7 @@ User=${RUN_USER}
 Group=${RUN_USER}
 EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
+ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay${PLAINTEXT_FLAG} --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
 Restart=on-failure
 RestartSec=3
 
@@ -225,11 +235,20 @@ cat <<EOF
    systemctl restart ${SERVICE}
    journalctl -u ${SERVICE} -f
 
- 客户端填写
-   ws://服务器IP:${PORT}
-   端口须在服务器防火墙和云平台安全组放行（TCP ${PORT}）。
-   若服务器经过路由器，还需将端口转发到本机。
-   公网请在前面加 TLS 反向代理，客户端填 wss://你的域名
+ 客户端连接
+EOF
+if [ -z "$PLAINTEXT_FLAG" ]; then
+    printf '   本机使用当前监听地址和端口（默认 127.0.0.1:%s）。
+' "$PORT"
+    printf '   远程客户端请通过 TLS 反向代理连接，填写 wss://你的域名。
+'
+else
+    printf '   可信局域网客户端填写 ws://服务器局域网IP:%s。
+' "$PORT"
+    printf '   公网部署请改用仅本机监听和 TLS 反向代理。
+'
+fi
+cat <<EOF
 
  ⚠ 该服务不保存任何心率历史；房间、会话与令牌都在内存，重启即清空。
 EOF

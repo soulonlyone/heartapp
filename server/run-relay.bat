@@ -22,7 +22,7 @@ echo.
 echo   监听 0.0.0.0:8765  关闭窗口或按 Ctrl+C 停止
 echo.
 cd /d "app"
-"..\.venv\Scripts\python.exe" -m heartapp.relay --host 0.0.0.0 --port 8765 --max-clients 20 --room-size 4
+"..\.venv\Scripts\python.exe" -m heartapp.relay --allow-plaintext --host 0.0.0.0 --port 8765 --max-clients 20 --room-size 4
 if errorlevel 1 (
     echo.
     echo   [x] 服务退出，返回码 %errorlevel%

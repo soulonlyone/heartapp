@@ -169,5 +169,5 @@ class TestWindowsServiceLauncher(unittest.TestCase):
                         Path(os.path.realpath(result["cwd"])),
                         Path(os.path.realpath(app)),
                     )
-                    self.assertEqual(result["args"], ["--host", "0.0.0.0", "--port", "9000",
+                    self.assertEqual(result["args"], ["--allow-plaintext", "--host", "0.0.0.0", "--port", "9000",
                                                      "--max-clients", "20", "--room-size", "4"])

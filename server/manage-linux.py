@@ -18,7 +18,7 @@ ENV_FILE = Path('/etc/heartapp-relay.env')
 UNIT_FILE = Path('/etc/systemd/system/heartapp-relay.service')
 SERVICE = 'heartapp-relay'
 HEADER = '# HeartApp managed configuration v1'
-DEFAULTS = dict(host='0.0.0.0', port='8765', max_clients='20', room_size='4', user='heartapp', password='')
+DEFAULTS = dict(host='127.0.0.1', port='8765', max_clients='20', room_size='4', user='heartapp', password='')
 
 
 def env_key(key):
@@ -61,6 +61,16 @@ def load_settings():
     return settings
 
 
+#: 密码最短长度；太短的和常见弱密码直接拒绝。
+MIN_PASSWORD_LENGTH = 8
+WEAK_PASSWORDS = {
+    'password', 'passw0rd', '12345678', '123456789', '87654321',
+    'qwertyui', 'abcdefgh', '11111111', '88888888', 'heartapp',
+}
+#: 只用于校验其它字段时占位的合法密码，避免每次都要真实密码。
+PASSWORD_PLACEHOLDER = 'validate-only'
+
+
 def validate(settings):
     for key, low, high in (('port', 1, 65535), ('max_clients', 1, 10000), ('room_size', 1, 128)):
         if not settings[key].isascii() or not settings[key].isdigit() or not low <= int(settings[key]) <= high:
@@ -69,8 +79,15 @@ def validate(settings):
         raise ValueError('系统运行用户名无效')
     if not re.fullmatch(r'[A-Za-z0-9_.:%-]+', settings['host']):
         raise ValueError('监听地址无效')
-    if not settings['password'] or not settings['password'].isprintable():
+    password = settings['password']
+    if not password or not password.isprintable():
         raise ValueError('访问密码不能为空，也不能包含换行等控制字符')
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f'访问密码至少 {MIN_PASSWORD_LENGTH} 位')
+    if len(set(password)) == 1:
+        raise ValueError('访问密码不能是同一个字符重复')
+    if password.lower() in WEAK_PASSWORDS:
+        raise ValueError('这个密码太常见，换一个')
 
 
 def save_settings(settings):
@@ -196,7 +213,7 @@ def read_number(settings, key, label):
     while True:
         value = input(f'{label} [{settings[key]}]：').strip() or settings[key]
         try:
-            validate(dict(DEFAULTS, password='check', **{key: value}))
+            validate(dict(DEFAULTS, password=PASSWORD_PLACEHOLDER, **{key: value}))
         except ValueError as exc:
             print(exc)
             continue
@@ -225,6 +242,10 @@ def configure(args):
             validate(settings)
             print(f"\n监听地址 {settings['host']}，端口 {settings['port']}。")
             print('访问密码已设置——客户端登录服务器时填它。')
+            if settings['host'] not in ('127.0.0.1', 'localhost', '::1', '[::1]'):
+                print(f"\n注意：监听 {settings['host']} 且未启用 TLS，"
+                      '访问密码和心率会明文经过网络，仅适合可信局域网。')
+                print('公网使用请配置 HTTPS 反向代理并把监听地址改为 127.0.0.1。')
             print('安装或升级会重启服务，现有临时房间会清空。')
             if not confirm('确认安装并启动服务？'):
                 print('已取消，原配置保留。')

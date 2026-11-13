@@ -6,4 +6,4 @@ COPY heartapp/__init__.py heartapp/room_protocol.py heartapp/relay.py heartapp/l
 USER 10001:10001
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=2).read()"
-CMD ["python", "-m", "heartapp.relay", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["python", "-m", "heartapp.relay", "--allow-plaintext", "--host", "0.0.0.0", "--port", "8765"]

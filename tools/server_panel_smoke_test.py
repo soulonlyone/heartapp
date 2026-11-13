@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory(dir=out) as temporary:
         wait(lambda: panel._running)
         assert not panel.port.isEnabled()
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=3) as response:
-            assert b"relay v2 OK" in response.read()
+            assert response.read().strip() == b"OK"
         assert "password" not in json.loads(config.read_text(encoding="utf-8"))
         assert panel.password.text() not in config.read_text(encoding="utf-8")
         address = f"ws://127.0.0.1:{port}"

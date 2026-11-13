@@ -7,7 +7,7 @@
 > - One-line Linux: `curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash`
 >   (the wizard asks for a password with hidden input; use `--non-interactive` + `HEARTAPP_INSTALL_PASSWORD` for automation)
 > - Docker: `docker run -d --name heartapp-server -p 127.0.0.1:8765:8765 -e HEARTAPP_RELAY_PASSWORD=pw <image>`
-> - Windows: run `HeartApp-Server-v<ver>-win64.exe --host 0.0.0.0 --port 8765 --password pw`,
+> - Windows: run `HeartApp-Server-v<ver>-win64.exe --allow-plaintext --host 0.0.0.0 --port 8765 --password pw`,
 >   or use the GUI panel (`HeartApp-Server-Panel`).
 > - Clients connect with `ws://<host>:8765` (LAN) or `wss://<domain>` (public, behind TLS).
 > - The server stores **no heart-rate history**; rooms/tokens live in memory only.
@@ -86,7 +86,7 @@ cd heartapp-server-1.4.0 && sudo bash server/install-linux.sh
 sudo heartapp-server          # 启停服务、看日志、改密码、改端口、改每房容量
 systemctl status heartapp-relay
 journalctl -u heartapp-relay -f
-curl http://127.0.0.1:8765/healthz     # HeartApp relay v2 OK
+curl http://127.0.0.1:8765/healthz     # OK
 ```
 
 卸载：
@@ -111,7 +111,7 @@ capabilities。想让局域网直连就把 `HEARTAPP_BIND_IP` 改成 `0.0.0.0`�
 
 ## Windows
 
-- **独立 exe**（不需要 Python）：`HeartApp-Server-v<版本>-win64.exe --host 0.0.0.0 --port 8765 --password pw`
+- **独立 exe**（不需要 Python）：`HeartApp-Server-v<版本>-win64.exe --allow-plaintext --host 0.0.0.0 --port 8765 --password pw`
 - **可视化面板**：解压 `HeartApp-Server-Panel-v<版本>-win64.zip`，双击运行，可启停、设密码、
   复制地址、显示在线人数、最小化到托盘。退出时只停自己启动的实例。
 - **开机自启**：管理员 PowerShell 运行 `server\service-windows.ps1 -Install`（计划任务，SYSTEM 运行）。
@@ -121,7 +121,7 @@ capabilities。想让局域网直连就把 `HEARTAPP_BIND_IP` 改成 `0.0.0.0`�
 
 ```sh
 pip install -r server/requirements.txt
-python -m heartapp.relay --host 0.0.0.0 --port 8765 --password '口令'
+python -m heartapp.relay --allow-plaintext --host 0.0.0.0 --port 8765 --password '口令'
 ```
 
 | 参数 | 默认 | 说明 |

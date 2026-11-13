@@ -165,7 +165,7 @@ class TestRelay(unittest.IsolatedAsyncioTestCase):
                 return response.status, response.read()
         status, body = await asyncio.to_thread(fetch)
         self.assertEqual(status, 200)
-        self.assertIn(b"relay v2 OK", body)
+        self.assertEqual(body.strip(), b"OK")
 
     async def login(self, **fields):
         client = await connect(self.url, proxy=None)

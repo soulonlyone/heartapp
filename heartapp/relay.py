@@ -21,7 +21,8 @@ async def start_server(relay: Relay, host: str = "127.0.0.1", port: int = 8765,
                        *, tls: Optional[ssl.SSLContext] = None) -> Server:
     def health(connection: ServerConnection, request: Request) -> Optional[Response]:
         if request.path == "/healthz":
-            return connection.respond(200, f"HeartApp relay v{VERSION} OK\n")
+            # 只回 OK：不暴露版本与协议号，避免给扫描器提供指纹。
+            return connection.respond(200, "OK\n")
         if request.path != "/":
             return connection.respond(404, "Not found\n")
         return None
@@ -59,9 +60,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("示例：\n"
                 "  python -m heartapp.relay --host 127.0.0.1 --port 8765 --max-clients 20\n"
-                "  python -m heartapp.relay --host 0.0.0.0 --room-size 4\n\n"
+                "  python -m heartapp.relay --allow-plaintext --host 0.0.0.0 --room-size 4\n\n"
                 "密码：优先使用环境变量 HEARTAPP_RELAY_PASSWORD，避免写入进程命令行。\n"
-                "验收：访问 http://127.0.0.1:8765/healthz；前台运行按 Ctrl+C 停止。\n"
+                "验收：访问 http://127.0.0.1:8765/healthz 返回 OK；前台运行按 Ctrl+C 停止。\n"
                 "帮助不会启动服务。完整操作见 server/Linux说明.md、server/Docker说明.md。"),
     )
     parser.add_argument("--version", action="version", version=f"HeartApp relay {__version__} · protocol {VERSION}")
@@ -73,6 +74,11 @@ def main() -> None:
     parser.add_argument("--cert", help="TLS 证书文件")
     parser.add_argument("--key", help="TLS 私钥文件")
     parser.add_argument(
+        "--allow-plaintext",
+        action="store_true",
+        help="允许在非本机地址上以明文运行；仅适合可信局域网（公网请用 HTTPS 反代）",
+    )
+    parser.add_argument(
         "--password",
         help="访问密码；也可用环境变量 HEARTAPP_RELAY_PASSWORD。"
              "长期运行的服务建议用环境变量，避免密码出现在进程命令行里",
@@ -82,6 +88,13 @@ def main() -> None:
         parser.error(f"房间人数应为 1～{MAX_ROOM_SIZE}，总连接上限应为 1～10000")
     if bool(args.cert) != bool(args.key):
         parser.error("--cert 与 --key 必须同时提供")
+    loopback = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    if not args.cert and args.host not in loopback and not args.allow_plaintext:
+        parser.error(
+            f"拒绝在 {args.host} 上以明文启动：访问密码和心率都会明文经过网络。\n"
+            "  仅局域网使用：加 --allow-plaintext；\n"
+            "  公网使用：先配置 HTTPS 反向代理，本机监听 127.0.0.1（见 server/README.md）。"
+        )
     # 不记录 WebSocket 消息、昵称、房间码或心率。
     logging.getLogger("websockets.server").setLevel(logging.CRITICAL)
     try:
