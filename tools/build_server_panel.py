@@ -8,9 +8,17 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# 版本资源：没有它的 exe 在杀毒软件眼里是匿名文件，容易误报（实现见 build_exe.py）
+sys.path.insert(0, str(ROOT / "tools"))
+from build_exe import _version_file  # noqa: E402
+
 
 def main() -> int:
-    args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--windowed",
+    version_file = _version_file(
+        "HeartApp-Server-Panel", "HeartApp 服务端面板", "HeartApp-Server-Panel.exe"
+    )
+    args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--noupx", "--onedir", "--windowed",
+            "--version-file", str(version_file),
             "--name", "HeartApp-Server-Panel", "--paths", str(ROOT),
             "--distpath", str(ROOT / "dist"), "--workpath", str(ROOT / "build/server-panel"),
             "--specpath", str(ROOT / "build")]

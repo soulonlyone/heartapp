@@ -112,6 +112,11 @@ Windows 可用服务端面板（可视化开服），详见 [服务端文档](se
 - **小窗被游戏挡住** —— 独占全屏会盖住，改成无边框窗口模式
 - **导出 CSV 没权限** —— 用「导出 CSV → 导出到数据目录」，不走系统对话框
 - **启动就闪退** —— 看程序目录的 `启动错误.log`，通常是杀软拦截
+- **杀毒软件报毒 / 文件被删** —— PyInstaller 打包的常见误报（Defender 可能报
+  `PUA:Win32/Packunwan`）。先 `Get-FileHash ... -Algorithm SHA256` 与
+  [SHA256SUMS.txt](https://github.com/soulonlyone/heartapp/releases/latest) 核对；
+  一致就是原版，然后把程序文件夹加入「病毒和威胁防护 → 排除项」，
+  或从「保护历史记录」还原。仍不放心可跑源码
 
 更多见 [使用指南](docs/使用指南.md)。
 

@@ -26,6 +26,7 @@ Python 的路径 API 处理 Unicode 是可靠的。
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -59,10 +60,75 @@ CLI_EXE = "心率记录仪-命令行.exe"
 PORTABLE_DIR = "心率记录仪-便携版"
 
 
+VERSION_INFO_DIR = BUILD / "version_info"
+
+
+def _app_version() -> str:
+    """从 heartapp/__init__.py 读版本号，避免 import 整个包。"""
+    text = (ROOT / "heartapp" / "__init__.py").read_text(encoding="utf-8")
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not match:
+        raise SystemExit("读不到 heartapp/__init__.py 里的 __version__")
+    return match.group(1)
+
+
+def _version_tuple(version: str) -> tuple:
+    numbers = [int(part) for part in version.split(".") if part.isdigit()]
+    while len(numbers) < 4:
+        numbers.append(0)
+    return tuple(numbers[:4])
+
+
+def _version_file(name: str, description: str, original: str) -> Path:
+    """生成 PyInstaller 的版本资源文件。
+
+    没有版本资源的 exe 在杀毒软件眼里是「匿名可执行文件」，把公司名、产品名、
+    版本号、版权补上能明显降低启发式误判（实测被 Defender 判为
+    PUA:Win32/Packunwan，一半原因在这里）。
+    """
+    version = _app_version()
+    numbers = _version_tuple(version)
+    VERSION_INFO_DIR.mkdir(parents=True, exist_ok=True)
+    target = VERSION_INFO_DIR / f"{name}.txt"
+    target.write_text(
+        f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={numbers},
+    prodvers={numbers},
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904b0',
+        [StringStruct('CompanyName', 'HeartApp'),
+         StringStruct('FileDescription', '{description}'),
+         StringStruct('FileVersion', '{version}'),
+         StringStruct('InternalName', '{name}'),
+         StringStruct('LegalCopyright', 'Copyright (c) 2026 soulonlyone. MIT License.'),
+         StringStruct('OriginalFilename', '{original}'),
+         StringStruct('ProductName', 'HeartApp'),
+         StringStruct('ProductVersion', '{version}')])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+""",
+        encoding="utf-8",
+    )
+    return target
+
+
 def _base() -> list:
     return [
         "--noconfirm",
         "--clean",
+        "--noupx",
         "--icon", str(ICON),
         "--collect-all", "winrt",
         "--collect-all", "bleak",
@@ -136,6 +202,7 @@ def build_gui_onefile() -> int:
             "--windowed",
             "--exclude-module", "tkinter",
             "--runtime-tmpdir", RUNTIME_TMPDIR,
+            "--version-file", str(_version_file("HeartApp", "HeartApp 心率监控", "HeartApp.exe")),
             "--name", "HeartApp",
             "--add-data", f"{ICON};.",
             "--workpath", str(BUILD / "onefile_gui"),
@@ -151,6 +218,7 @@ def build_cli_onefile() -> int:
             "--onefile",
             "--console",
             "--runtime-tmpdir", RUNTIME_TMPDIR,
+            "--version-file", str(_version_file("HeartAppCLI", "HeartApp 命令行", "HeartAppCLI.exe")),
             "--name", "HeartAppCLI",
             # 命令行版不含任何图形界面
             "--exclude-module", "tkinter",
@@ -174,6 +242,7 @@ def build_gui_onedir() -> int:
             "--onedir",
             "--windowed",
             "--exclude-module", "tkinter",
+            "--version-file", str(_version_file("HeartApp", "HeartApp 心率监控", "HeartApp.exe")),
             "--name", "HeartAppPortable",
             "--add-data", f"{ICON};.",
             "--workpath", str(BUILD / "onedir_gui"),
@@ -188,6 +257,7 @@ def build_cli_onedir() -> int:
         [PYINSTALLER] + _base() + _excludes() + [
             "--onedir",
             "--console",
+            "--version-file", str(_version_file("HeartAppCLI", "HeartApp 命令行", "HeartAppCLI.exe")),
             "--name", "HeartAppCLIPortable",
             "--exclude-module", "tkinter",
             "--exclude-module", "PySide6",

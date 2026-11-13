@@ -50,12 +50,20 @@ def run(args: list) -> int:
 
 def build_windows_exe() -> Path:
     """用 PyInstaller 打一个不需要 Python 环境的服务端 exe。"""
+    # 版本资源：没有它的 exe 在杀毒软件眼里是匿名文件，容易误报（实现见 build_exe.py）
+    sys.path.insert(0, str(ROOT / "tools"))
+    from build_exe import _version_file
+
+    version_file = _version_file(
+        "HeartApp-Server", "HeartApp 联机服务端", "HeartApp-Server.exe"
+    )
     if not PYINSTALLER.exists():
         raise SystemExit("找不到 PyInstaller。先运行： .venv\\Scripts\\python.exe -m pip install pyinstaller")
 
     args = [
         PYINSTALLER,
-        "--noconfirm", "--clean", "--onefile", "--console",
+        "--noconfirm", "--clean", "--noupx", "--onefile", "--console",
+        "--version-file", str(version_file),
         "--name", "HeartApp-Server",
         "--runtime-tmpdir", ".",          # 与客户端一致：不在 %TEMP% 里解压
         "--paths", str(ROOT),

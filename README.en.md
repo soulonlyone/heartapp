@@ -119,6 +119,10 @@ writable does it fall back to `%LOCALAPPDATA%\HeartApp`.
 - **Overlay hidden by the game** — exclusive fullscreen covers it; switch the game to borderless windowed
 - **CSV export says "permission denied"** — use "Export CSV → Export to data folder", which skips the system dialog
 - **Crashes on startup** — check `启动错误.log` in the program folder; usually antivirus blocking the exe
+- **Antivirus flags or deletes the exe** — a known PyInstaller false positive
+  (Defender may report `PUA:Win32/Packunwan`). Verify the SHA256 against
+  `SHA256SUMS.txt`, then add the program folder to Windows Security exclusions,
+  or restore it from Protection history. Running from source is always an option
 
 More in the [user guide](docs/guide.en.md) (English) / [使用指南](docs/使用指南.md) (Chinese).
 

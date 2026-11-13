@@ -145,10 +145,11 @@ def main() -> int:
 
     # 校验和也进仓库：镜像站常常拿不到 Release 里的 SHA256SUMS.txt，
     # deploy.sh 会退回这里取（与脚本同源，走 raw.githubusercontent）。
-    checksums = ROOT / "server" / "checksums" / f"v{V}.txt"
-    checksums.parent.mkdir(parents=True, exist_ok=True)
-    checksums.write_text(sums.read_text(encoding="utf-8"), encoding="utf-8")
-    print(f"  已更新 {checksums.relative_to(ROOT)}")
+    # 注意别叫 checksums：会遮住上面的同名函数
+    checksum_file = ROOT / "server" / "checksums" / f"v{V}.txt"
+    checksum_file.parent.mkdir(parents=True, exist_ok=True)
+    checksum_file.write_text(sums.read_text(encoding="utf-8"), encoding="utf-8")
+    print(f"  已更新 {checksum_file.relative_to(ROOT)}")
 
     print("\n" + "=" * 60)
     print(f"发布包 v{V} —— 一个 Release 装全部（{OUT.relative_to(ROOT)}）")
