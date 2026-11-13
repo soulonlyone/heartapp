@@ -1,17 +1,15 @@
-# 图形界面：Qt
-# 液态玻璃要做「真模糊 + 真半透明合成 + 抗锯齿」，Tkinter 做不到这三件事
-# （Tk 没有 alpha、没有高斯模糊、Canvas 圆弧是 GDI 画的没有抗锯齿）。
-# 只装 Essentials，不装完整 PySide6（后者还会带上 WebEngine/Qt3D 等用不到的模块）。
+# GUI: Qt. Essentials only - the full PySide6 pulls WebEngine/Qt3D we do not use.
 PySide6-Essentials>=6.6,<7
 
-# 蓝牙低功耗（BLE）通信
-# bleak 在 Windows 上会自动带上 winrt-* 系列包，负责和系统蓝牙栈打交道。
+# BLE. On Windows bleak pulls the winrt-* packages that talk to the system Bluetooth stack.
 bleak>=1.0,<2.0
 
-# 联机客户端及独立转发服务，共享轻量 WebSocket 协议。
+# Room client and the standalone relay share one lightweight WebSocket protocol.
 websockets>=15,<16
 
-# 说明：
-# * 数据库用自带的 sqlite3。
-# * 图表、表盘、玻璃面板全部用 QPainter 手绘，所以不需要 matplotlib / numpy。
-# * 已验证环境：Python 3.9.13 + PySide6 6.10.3 + bleak 1.1.1（Windows 10/11）。
+# Notes:
+# * Storage uses the bundled sqlite3.
+# * Charts and overlays are hand-drawn with QPainter, so no matplotlib / numpy.
+# * Verified on Python 3.9.13 + PySide6 6.10.3 + bleak 1.1.1 (Windows 10/11).
+# * Keep this file ASCII-only: pip decodes requirement files with the system locale,
+#   and a Chinese Windows (cp936) fails on UTF-8 comments.

@@ -34,6 +34,7 @@ REPO="soulonlyone/heartapp"
 VERSION=""
 MIRROR=""
 DRY_RUN=0
+NO_VERIFY=0
 ARGS=()
 
 say() { printf '[heartapp] %s\n' "$*"; }
@@ -43,6 +44,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --version) [ $# -ge 2 ] || die "--version 需要一个值"; VERSION="$2"; shift 2 ;;
         --mirror)  [ $# -ge 2 ] || die "--mirror 需要一个前缀"; MIRROR="$2"; shift 2 ;;
+        --no-verify) NO_VERIFY=1; shift ;;
         --non-interactive) ARGS+=("$1"); shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --password|--port|--max-clients|--room-size|--host|--user)
@@ -55,6 +57,7 @@ HeartApp Linux 一行部署
 默认在控制终端进入安装向导，按提示设置密码和端口并确认安装。
 --version TAG 指定 Release；--dry-run 只下载解压；--non-interactive 用于自动部署。
 --mirror 前缀 强制只用某个镜像，如 https://ghfast.top/（默认已自动回退，一般不用给）。
+--no-verify 取不到 SHA256SUMS 时仍然继续安装（默认会中止）。
 可传 --password、--port、--host、--max-clients、--room-size、--user。
 安装后运行 sudo heartapp-server 打开管理菜单。
 HELP
@@ -148,10 +151,18 @@ if [ -n "$EXPECTED" ] && [ -n "$SHA_TOOL" ]; then
     fi
     [ "$EXPECTED" = "$ACTUAL" ] || die "SHA256 校验失败，文件可能损坏或被篡改"
     say "SHA256 校验通过"
+elif [ -z "${EXPECTED:-}" ]; then
+    # 校验和是唯一能确认「下载到的包没被镜像篡改」的依据，缺了就默认不装。
+    if [ "$NO_VERIFY" -eq 1 ]; then
+        say "警告：没取到 ${ASSET} 的校验和，按 --no-verify 继续安装"
+    else
+        die "没取到 ${ASSET} 的校验和，无法确认安装包完整。可任选其一：
+  1) 换镜像重试：--mirror https://gh-proxy.com/
+  2) 确认来源可信后跳过校验：--no-verify
+  3) 在能上 GitHub 的电脑下载压缩包和 SHA256SUMS.txt，自行核对后手动安装"
+    fi
 elif [ -z "$SHA_TOOL" ]; then
     say "跳过 SHA256 校验：系统没有 sha256sum / shasum"
-elif [ -z "${EXPECTED:-}" ]; then
-    say "跳过 SHA256 校验：没取到 SHA256SUMS.txt，或文件里没有 ${ASSET}"
 else
     say "跳过 SHA256 校验"
 fi

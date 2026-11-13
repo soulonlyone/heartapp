@@ -117,14 +117,22 @@ fi
 
 log "安装到 $APP_DIR"
 mkdir -p "$APP_DIR/heartapp"
+
+# 先收紧所有权再执行目录里的任何程序：
+# 旧版本把这个目录交给过服务用户，若先跑 $APP_DIR/venv/bin/pip，
+# 等于用 root 执行一个服务用户可写（可能已被篡改）的脚本。
+chown -R root:root "$APP_DIR"
+chmod -R go-w "$APP_DIR"
 install -m 644 "$SRC_ROOT/heartapp/__init__.py"      "$APP_DIR/heartapp/__init__.py"
 install -m 644 "$SRC_ROOT/heartapp/room_protocol.py" "$APP_DIR/heartapp/room_protocol.py"
 install -m 644 "$SRC_ROOT/heartapp/relay.py"         "$APP_DIR/heartapp/relay.py"
 install -m 644 "$SRC_ROOT/heartapp/lobby.py"         "$APP_DIR/heartapp/lobby.py"
 install -m 644 "$SRC_ROOT/server/requirements.txt"   "$APP_DIR/requirements.txt"
 
-log "创建虚拟环境并安装依赖（只有 websockets）"
-[ -d "$APP_DIR/venv" ] || "$PY" -m venv "$APP_DIR/venv"
+log "重建虚拟环境并安装依赖（只有 websockets，包很小）"
+# 每次安装都重建：升级时复用旧 venv 会执行上一个版本留下的解释器和 pip。
+rm -rf "$APP_DIR/venv"
+"$PY" -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
 # 先试默认源（限时，避免无限挂起），失败再走国内镜像
 "$APP_DIR/venv/bin/pip" install --quiet --disable-pip-version-check \
@@ -137,11 +145,9 @@ log "创建虚拟环境并安装依赖（只有 websockets）"
       || die "依赖安装失败，可手动执行：$APP_DIR/venv/bin/pip install -r $APP_DIR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple"
   }
 
-# 安装目录归 root 所有，服务用户只读、只执行。
+# 安装目录归 root 所有（已在复制代码前收紧），服务用户只读、只执行。
 # 管理脚本（sudo heartapp-server）会用这里的 Python 解释器执行；
 # 如果目录归服务用户所有，服务被攻陷后可以替换解释器、等管理员执行时拿到 root。
-chown -R root:root "$APP_DIR"
-chmod -R go-w "$APP_DIR"
 
 # 管理器跟随服务端安装，终端菜单不依赖额外 Python 包。
 install -m 644 "$SRC_ROOT/server/manage-linux.py" "$APP_DIR/manage-linux.py"
