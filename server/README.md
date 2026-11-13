@@ -75,6 +75,17 @@ curl -fsSL https://gitee.com/<你的用户名>/heartapp/raw/main/server/deploy.s
 > 镜像只包含源码和脚本；Release 附件仍从 GitHub 下载，
 > `deploy.sh` 会自动回退镜像和仓库内的校验和。
 
+### 端口为什么还要手动放行
+
+两层防火墙，只有第一层能自动：
+
+| 层 | 自动化 | 说明 |
+|---|---|---|
+| 服务器本机（firewalld / ufw） | ✅ 安装脚本自动放行 | 监听非环回地址时执行，可用 `--no-open-port` 关掉 |
+| 云平台安全组（腾讯云 / 阿里云 / AWS） | ❌ 只能手动 | 属于云厂商控制面，改它需要账号级 API 密钥，VM 自己无权修改 |
+
+所以局域网里连不上时，先在云控制台加一条入站规则：TCP 端口（默认 8765）。
+
 ### 连不上 GitHub 时
 
 国内直连 `github.com` 常超时（`Failed to connect to github.com port 443`）。**脚本已经自动处理**：

@@ -27,6 +27,7 @@ PORT=8765
 MAX_CLIENTS=20
 ROOM_SIZE=4
 BIND_HOST=127.0.0.1
+OPEN_PORT=1
 PASSWORD=""
 PASSWORD_SET=0
 CONFIG_ARGS=()
@@ -40,6 +41,7 @@ HeartApp Linux 服务端安装器（systemd）
 用法：sudo bash server/install-linux.sh [参数]
 
   --host ADDRESS       监听地址，默认 127.0.0.1；局域网直连才用 0.0.0.0
+  --no-open-port       不改本机防火墙（默认会在非环回监听时自动放行端口）
   --port PORT          服务端口，默认 8765
   --max-clients COUNT  总连接上限，默认 20
   --room-size COUNT    每房间人数 1～128，默认 4
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
         --max-clients)  MAX_CLIENTS="$2"; CONFIG_ARGS+=("--max-clients" "$2"); shift 2 ;;
         --room-size)    ROOM_SIZE="$2"; CONFIG_ARGS+=("--room-size" "$2"); shift 2 ;;
         --host)         BIND_HOST="$2"; CONFIG_ARGS+=("--host" "$2"); shift 2 ;;
+        --no-open-port) OPEN_PORT=0; shift ;;
         --password)     PASSWORD="$2"; PASSWORD_SET=1; shift 2 ;;
         --user)         RUN_USER="$2"; CONFIG_ARGS+=("--user" "$2"); shift 2 ;;
         --non-interactive) CONFIG_ARGS+=("--non-interactive"); shift ;;
@@ -221,6 +224,23 @@ else
     die "服务没起来，看上面的日志"
 fi
 
+# 非环回监听时自动放行本机防火墙。云平台安全组在控制台，脚本无权修改。
+if [ -n "$PLAINTEXT_FLAG" ] && [ "$OPEN_PORT" -eq 1 ]; then
+    log "放行本机防火墙 TCP ${PORT}"
+    FIREWALL_DONE=0
+    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        firewall-cmd --permanent --add-port="${PORT}/tcp" >/dev/null 2>&1 \
+            && firewall-cmd --reload >/dev/null 2>&1 \
+            && { log "  已在 firewalld 放行 ${PORT}/tcp"; FIREWALL_DONE=1; }
+    elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+        ufw allow "${PORT}/tcp" >/dev/null 2>&1 \
+            && { log "  已在 ufw 放行 ${PORT}/tcp"; FIREWALL_DONE=1; }
+    fi
+    if [ "$FIREWALL_DONE" -eq 0 ]; then
+        log "  没检测到启用的 firewalld/ufw，请手动放行 TCP ${PORT}（或用 --no-open-port 跳过）"
+    fi
+fi
+
 log "健康检查"
 HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
 if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 3 "$HEALTH_URL"; then
@@ -258,7 +278,9 @@ if [ -z "$PLAINTEXT_FLAG" ]; then
 else
     printf '   可信局域网客户端填写 ws://服务器局域网IP:%s。
 ' "$PORT"
-    printf '   公网部署请改用仅本机监听和 TLS 反向代理。
+    printf '   公网访问还需在【云平台安全组】放行 TCP %s（这一步只能手动做）。
+' "$PORT"
+    printf '   注意：当前未加密，密码和心率明文传输；正式使用建议仅监听 127.0.0.1 + HTTPS 反代。
 '
 fi
 cat <<EOF
