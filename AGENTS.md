@@ -251,6 +251,7 @@ with patch.object(store, "add_samples", side_effect=OSError("disk full")):
 - [ ] 打包体积优化（PySide6 裁掉不用的 Qt 模块，可省 10MB+）
 - [ ] 真机长期稳定性验证（目前只在 OPPO Watch X2 上探针验证过服务存在）
 
+服务端重构计划见 [docs/handoff/server-refactor.md](docs/handoff/server-refactor.md)。
 合并 main 前另读 [docs/merge-handoff.md](docs/merge-handoff.md)，其中列出当前协议 v2、
 验证结果、数据边界和发布前未完成项。仅补文档可沿用最近一次代码验证；合并后需重新验证。
 
