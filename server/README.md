@@ -51,6 +51,30 @@ u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; 
 
 不放心管道安装，先下载检查：`curl -fsSLO .../deploy.sh && less deploy.sh && sudo bash deploy.sh`。
 
+### 国内 Gitee 镜像（推荐长期使用）
+
+GitHub raw 在国内时通时不通。仓库自带一个同步工作流
+（`.github/workflows/gitee-mirror.yml`），把 main 和 tag 推到 Gitee 后，
+安装命令变成一句而且稳定：
+
+```sh
+curl -fsSL https://gitee.com/<你的用户名>/heartapp/raw/main/server/deploy.sh | sudo bash
+```
+
+一次性配置（三分钟）：
+
+1. 在 [Gitee](https://gitee.com) 建一个**公开**仓库，名字用 `heartapp`
+2. Gitee → 设置 → 私人令牌 → 生成（勾 `projects` 权限），记下令牌
+3. 回到 GitHub 仓库 → Settings → Secrets and variables → Actions，添加两个 secret：
+   - `GITEE_USERNAME`：你的 Gitee 用户名
+   - `GITEE_TOKEN`：上一步的令牌
+4. 手动跑一次 **Actions → Mirror to Gitee → Run workflow**
+
+之后每次推 main 都会自动同步。没配 secret 时工作流会自动跳过，不影响其它 CI。
+
+> 镜像只包含源码和脚本；Release 附件仍从 GitHub 下载，
+> `deploy.sh` 会自动回退镜像和仓库内的校验和。
+
 ### 连不上 GitHub 时
 
 国内直连 `github.com` 常超时（`Failed to connect to github.com port 443`）。**脚本已经自动处理**：

@@ -1,0 +1,60 @@
+name: Mirror to Gitee
+
+# 把 main 和 tag 同步到 Gitee，这样国内服务器可以直接用 gitee.com 的一句话安装：
+#   curl -fsSL https://gitee.com/<用户名>/heartapp/raw/main/server/deploy.sh | sudo bash
+#
+# 需要先在仓库 Secrets 里配置（Settings → Secrets and variables → Actions）：
+#   GITEE_USERNAME  Gitee 用户名
+#   GITEE_TOKEN     Gitee 私人令牌（权限勾 projects）
+# 没配置时自动跳过，不影响其它 CI。
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitee-mirror
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 检查是否配置了 Gitee 凭据
+        id: check
+        env:
+          TOKEN: ${{ secrets.GITEE_TOKEN }}
+          USER: ${{ secrets.GITEE_USERNAME }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$USER" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "未配置 GITEE_USERNAME / GITEE_TOKEN，跳过镜像"
+          fi
+
+      - name: 推送到 Gitee
+        if: steps.check.outputs.ready == 'true'
+        env:
+          GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions@users.noreply.github.com"
+          # 令牌放 URL 里，Actions 会在日志中自动打码
+          git remote add gitee "https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITEE_USERNAME}/heartapp.git"
+          git push gitee "HEAD:refs/heads/main" --force
+          if git tag --list 'v*' | grep -q .; then
+            git push gitee --tags --force
+          fi
+          echo "已同步到 https://gitee.com/${GITEE_USERNAME}/heartapp"
