@@ -4,7 +4,7 @@
 只需要 Python 3.9+ 与 `websockets`，也可以直接用免 Python 的独立 exe。
 
 > **English quick start**
-> - One-line Linux: `curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash`
+> - One-line Linux: run the multi-source command from the Chinese section below (it falls back through GitHub mirrors with a 25 s cap).
 >   (the wizard asks for a password with hidden input; use `--non-interactive` + `HEARTAPP_INSTALL_PASSWORD` for automation)
 > - Docker: `docker run -d --name heartapp-server -p 127.0.0.1:8765:8765 -e HEARTAPP_RELAY_PASSWORD=pw <image>`
 > - Windows: run `HeartApp-Server-v<ver>-win64.exe --allow-plaintext --host 0.0.0.0 --port 8765 --password pw`,
@@ -24,9 +24,11 @@
 ## 一行部署（Linux）
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh \
-  | sudo bash
+u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; s=; for p in '' 'https://ghfast.top/' 'https://gh-proxy.com/' 'https://ghproxy.net/'; do s=$(curl -fsSL --connect-timeout 8 --max-time 25 "${p}${u}" 2>/dev/null) && break; done; [ -n "$s" ] && echo "$s" | sudo bash || echo "所有下载源都失败，可手动下载 deploy.sh 后 sudo bash deploy.sh" >&2
 ```
+
+直连 GitHub 不通时自动换镜像，每个源最多等 25 秒，全部失败才报错。
+装的过程中会进入向导（隐藏输入密码、确认端口、确认安装）。
 
 运行后进入向导：**设置服务器访问密码（输入时显示 \* ，不回显明文，输两次）** → 确认端口 → 确认安装。
 
