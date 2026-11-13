@@ -129,20 +129,27 @@ install -m 644 "$SRC_ROOT/heartapp/relay.py"         "$APP_DIR/heartapp/relay.py
 install -m 644 "$SRC_ROOT/heartapp/lobby.py"         "$APP_DIR/heartapp/lobby.py"
 install -m 644 "$SRC_ROOT/server/requirements.txt"   "$APP_DIR/requirements.txt"
 
-log "重建虚拟环境并安装依赖（只有 websockets，包很小）"
+log "重建虚拟环境并安装依赖（只有 websockets，一般 1～2 分钟）"
 # 每次安装都重建：升级时复用旧 venv 会执行上一个版本留下的解释器和 pip。
 rm -rf "$APP_DIR/venv"
 "$PY" -m venv "$APP_DIR/venv"
-"$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
-# 先试默认源（限时，避免无限挂起），失败再走国内镜像
-"$APP_DIR/venv/bin/pip" install --quiet --disable-pip-version-check \
-    --timeout 20 --retries 1 -r "$APP_DIR/requirements.txt" \
+PIP="$APP_DIR/venv/bin/pip"
+PIP_OPTS=(--quiet --disable-pip-version-check --no-input --timeout 20 --retries 1)
+MIRROR=https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 升级 pip 只是锦上添花：限时、失败也继续，绝不能让安装卡在这里。
+"$PIP" install "${PIP_OPTS[@]}" --upgrade pip \
+  || "$PIP" install "${PIP_OPTS[@]}" --upgrade pip -i "$MIRROR" \
+  || log "pip 升级失败，继续使用 venv 自带的版本"
+
+# 依赖只有 websockets：先试默认源（限时 20 秒），不行再走国内镜像。
+log "安装依赖 websockets（默认源）"
+"$PIP" install "${PIP_OPTS[@]}" -r "$APP_DIR/requirements.txt" \
   || {
     log "默认源不可达，改用国内镜像重试"
-    "$APP_DIR/venv/bin/pip" install --quiet --disable-pip-version-check \
-        --timeout 30 --retries 2 -r "$APP_DIR/requirements.txt" \
-        -i https://pypi.tuna.tsinghua.edu.cn/simple \
-      || die "依赖安装失败，可手动执行：$APP_DIR/venv/bin/pip install -r $APP_DIR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple"
+    "$PIP" install "${PIP_OPTS[@]}" --timeout 30 --retries 2 \
+        -r "$APP_DIR/requirements.txt" -i "$MIRROR" \
+      || die "依赖安装失败，可手动执行：$PIP install -r $APP_DIR/requirements.txt -i $MIRROR"
   }
 
 # 安装目录归 root 所有（已在复制代码前收紧），服务用户只读、只执行。
