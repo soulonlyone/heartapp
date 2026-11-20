@@ -125,7 +125,6 @@ say "目标版本：$TAG"
 
 ASSET="HeartApp-Server-${TAG}-linux.tar.gz"
 BASE="${HEARTAPP_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
-[ -n "$MIRROR" ] && BASE="${MIRROR%/}/$BASE"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -144,7 +143,8 @@ CHECKSUM_BASE="${HEARTAPP_CHECKSUM_BASE_URL:-https://raw.githubusercontent.com/$
 pick_expected() {
     # sha256sum 在不同平台输出 "hash  file" 或 "hash *file"（二进制标记），两种都要认。
     # 用 `|| true` 兜住：匹配不到时不能让 set -e 把整个脚本杀掉。
-    awk -v f="$ASSET" '$2 == f || $2 == "*" f { print $1; exit }' "$1" 2>/dev/null || true
+    # 校验和文件可能是 CRLF（Windows 上生成），先去掉行尾 \r 再比对。
+    awk -v f="$ASSET" '{ sub(/\r$/, "") } $2 == f || $2 == "*" f { print $1; exit }' "$1" 2>/dev/null || true
 }
 
 EXPECTED=""
