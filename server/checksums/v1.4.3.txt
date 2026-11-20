@@ -1,0 +1,6 @@
+658112916901ea6931aa35226089388386b804640da57ed77e30d0949f321340  HeartApp-Server-Panel-v1.4.3-win64.zip
+bb2ef04f5092a968395a777700c24a0e4a3bc683dc4ec8df11ecb0890493f204  HeartApp-Server-v1.4.3-docker.tar.gz
+17fb1e27556f9f20adf2792cc39d3ad4cce939a38829846634f484a7fb4c0748  HeartApp-Server-v1.4.3-linux-source.tar.gz
+eec41c7d8a52a403c58003eb260854aeba74ac1841b37f0f5bcb92a79ba81573  HeartApp-Server-v1.4.3-linux.tar.gz
+cc69e11e57baa68aa0e3750e6e6bf1df65b3ed6fc4e5dfc5195459d6085c8fbe  HeartApp-Server-v1.4.3-win64.exe
+a968151f27ac623db22da7f5bef4984f45a5bbe145f2c0794f4c9da7326c9ac7  HeartApp-v1.4.3-win64-portable.zip

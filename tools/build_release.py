@@ -41,10 +41,12 @@ ARTIFACTS = {
     # 客户端只发便携版（解压即用、无 _MEI、数据在程序旁）；
     # 单文件版和独立命令行版不再发布，命令行版仍包含在便携 zip 内。
     "client_zip":     f"HeartApp-v{V}-win64-portable.zip",
+    # -linux.tar.gz 留给自包含包：一键安装脚本按这个名字下载，装完不需要 Python。
+    # 旧式源码包改名 -linux-source.tar.gz 作为备用。
     "server_exe":     f"HeartApp-Server-v{V}-win64.exe",
     "server_linux":   f"HeartApp-Server-v{V}-linux.tar.gz",
+    "server_source":  f"HeartApp-Server-v{V}-linux-source.tar.gz",
     "server_docker":  f"HeartApp-Server-v{V}-docker.tar.gz",
-    "server_standalone": f"HeartApp-Server-v{V}-linux-standalone.tar.gz",
     "panel_zip":      f"HeartApp-Server-Panel-v{V}-win64.zip",
 }
 
@@ -88,21 +90,23 @@ def assemble() -> list:
 
     print("  服务端三个包 …")
     for key, name in (("server_exe", f"HeartApp-Server-v{V}-win64.exe"),
-                      ("server_linux", f"HeartApp-Server-v{V}-linux.tar.gz"),
+                      ("server_source", f"HeartApp-Server-v{V}-linux.tar.gz"),
                       ("server_docker", f"HeartApp-Server-v{V}-docker.tar.gz")):
         src = DIST / "relay" / name
         dst = OUT / ARTIFACTS[key]
         shutil.copy2(src, dst)
         produced.append(dst)
 
-    standalone = DIST / "standalone" / ARTIFACTS["server_standalone"]
+    # 自包含包复用 -linux.tar.gz 这个名字：一键安装脚本按它下载，
+    # 装到服务器上不需要 Python。源码包改名 -linux-source.tar.gz 备用。
+    standalone = DIST / "standalone" / f"HeartApp-Server-v{V}-linux.tar.gz"
     if standalone.exists():
-        print("  服务端自包含 Linux 包 …")
-        dst = OUT / ARTIFACTS["server_standalone"]
+        print("  服务端自包含 Linux 包（-linux.tar.gz）…")
+        dst = OUT / ARTIFACTS["server_linux"]
         shutil.copy2(standalone, dst)
         produced.append(dst)
     else:
-        print("  服务端自包含 Linux 包：未找到，跳过（用 CI 的 standalone 任务产出）")
+        print("  ⚠ 没找到自包含包，-linux.tar.gz 会缺失；先跑 CI 的 standalone 任务")
 
     print("  服务端面板（压缩）…")
     _zip_dir(DIST / "HeartApp-Server-Panel", OUT / ARTIFACTS["panel_zip"])
