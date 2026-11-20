@@ -38,12 +38,13 @@ V = VERSION
 
 #: 发布件的 ASCII 名称。中文文件名经 gh 上传会被截断。
 ARTIFACTS = {
-    "client_exe":     f"HeartApp-v{V}-win64.exe",
-    "client_cli":     f"HeartApp-v{V}-win64-cli.exe",
+    # 客户端只发便携版（解压即用、无 _MEI、数据在程序旁）；
+    # 单文件版和独立命令行版不再发布，命令行版仍包含在便携 zip 内。
     "client_zip":     f"HeartApp-v{V}-win64-portable.zip",
     "server_exe":     f"HeartApp-Server-v{V}-win64.exe",
     "server_linux":   f"HeartApp-Server-v{V}-linux.tar.gz",
     "server_docker":  f"HeartApp-Server-v{V}-docker.tar.gz",
+    "server_standalone": f"HeartApp-Server-v{V}-linux-standalone.tar.gz",
     "panel_zip":      f"HeartApp-Server-Panel-v{V}-win64.zip",
 }
 
@@ -81,14 +82,7 @@ def assemble() -> list:
     OUT.mkdir(parents=True)
     produced: list = []
 
-    print("  客户端单文件版 / 命令行版 …")
-    for src, key in ((DIST / "心率记录仪.exe", "client_exe"),
-                     (DIST / "心率记录仪-命令行.exe", "client_cli")):
-        dst = OUT / ARTIFACTS[key]
-        shutil.copy2(src, dst)
-        produced.append(dst)
-
-    print("  客户端便携版（压缩）…")
+    print("  客户端便携版（压缩，唯一的客户端产物）…")
     _zip_dir(DIST / "心率记录仪-便携版", OUT / ARTIFACTS["client_zip"])
     produced.append(OUT / ARTIFACTS["client_zip"])
 
@@ -100,6 +94,15 @@ def assemble() -> list:
         dst = OUT / ARTIFACTS[key]
         shutil.copy2(src, dst)
         produced.append(dst)
+
+    standalone = DIST / "standalone" / ARTIFACTS["server_standalone"]
+    if standalone.exists():
+        print("  服务端自包含 Linux 包 …")
+        dst = OUT / ARTIFACTS["server_standalone"]
+        shutil.copy2(standalone, dst)
+        produced.append(dst)
+    else:
+        print("  服务端自包含 Linux 包：未找到，跳过（用 CI 的 standalone 任务产出）")
 
     print("  服务端面板（压缩）…")
     _zip_dir(DIST / "HeartApp-Server-Panel", OUT / ARTIFACTS["panel_zip"])

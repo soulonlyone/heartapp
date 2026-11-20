@@ -94,3 +94,70 @@ jobs:
           path: _test_output/
           if-no-files-found: ignore
           retention-days: 7
+
+  standalone:
+    name: 构建 Linux 自包含包
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: 读取版本号
+        id: version
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import re, pathlib
+          text = pathlib.Path("heartapp/__init__.py").read_text(encoding="utf-8")
+          print("value=" + re.search(r'__version__\s*=\s*"([^"]+)"', text).group(1))
+          PY
+
+      - name: 下载可移植 CPython（固定版本 + 校验）
+        env:
+          ARCHIVE: cpython-3.12.16+20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+          SHA256: 6a9e62dad033790aef722dbd370e0ce76ce17b73627ba3ae679f537049350b39
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 600 \
+            "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/${ARCHIVE}" \
+            -o python.tar.gz
+          echo "${SHA256}  python.tar.gz" | sha256sum -c -
+
+      - name: 准备离线 wheel
+        run: |
+          set -euo pipefail
+          python -m pip download -d wheelhouse --only-binary=:all: \
+            --platform manylinux2014_x86_64 \
+            --platform manylinux_2_28_x86_64 \
+            --python-version 3.12 \
+            "certbot>=5.4,<6" "websockets>=15,<16"
+
+      - name: 构建自包含包
+        run: |
+          set -euo pipefail
+          python tools/build_linux_standalone.py \
+            --python-archive python.tar.gz \
+            --sha256 6a9e62dad033790aef722dbd370e0ce76ce17b73627ba3ae679f537049350b39 \
+            --wheelhouse wheelhouse \
+            --version "${{ steps.version.outputs.value }}" \
+            --output dist/standalone
+
+      - name: 冒烟：解压后跑 --version 与 acme --version
+        run: |
+          set -euo pipefail
+          cd dist/standalone
+          sha256sum -c SHA256SUMS.txt
+          tar -xzf ./*-linux.tar.gz
+          cd heartapp-server-*
+          ./runtime/heartapp-server --version
+          ./runtime/heartapp-server acme --version
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-standalone
+          path: dist/standalone/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
