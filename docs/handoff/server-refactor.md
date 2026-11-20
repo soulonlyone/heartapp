@@ -1,5 +1,84 @@
 # 服务端重构交接（2026-11-13）
 
+## DSH 检阅与合并（2026-11-20）
+
+检阅分支为 `codex/ip-tls`，目标为 `main`。
+上传前核对的基线为 `ecef7f0`，与当时远端 main 一致。
+
+- `heartapp/server_cli.py` 提供服务运行、管理菜单、健康检查和证书管理的统一入口。
+- `server/install-standalone.sh` 安装版本目录、写入 systemd 配置，并在失败时恢复旧版本与配置。
+- `server/ip-tls.py` 管理 IP 证书签发、权限部署和自动续期。
+- `tools/build_linux_standalone.py` 构建包含运行环境和证书工具的 Linux 包。
+- `server/install-linux.sh` 识别自包含包并进入对应安装器，保留源码包安装路径。
+- `server/deploy.sh` 识别新包结构，并修复下载超时、进度提示及镜像前缀重复问题。
+
+Ubuntu 实装与回退、443 端口 WSS 双客户端、206 项回归、Qt 和联机冒烟已验证。
+Windows 跳过的 3 项 Linux 文件权限测试已在 Ubuntu 补测。
+公网 CA 签发、跨天续期、Debian 和 OpenCloudOS 实装仍需要公网服务器验收。
+证书更新会重启联机服务，临时房间会清空。
+
+合并代码后，发布流程还需要选用自包含构建产物作为 Linux 附件，并生成新的完整校验清单。
+现有发布版本为 v1.4.2。请在新版本发布时同步 `server/LATEST`、
+`server/checksums/` 和发布说明，使一键安装入口下载到新的自包含包。
+本分支交付源码、构建工具和检阅说明。本地测试安装包位于
+`_test_output/standalone/`，测试产物与构建环境按仓库忽略规则管理。
+
+本次构建使用 `cpython-3.12.16+20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz`，
+来源为 python-build-standalone 官方发布，SHA256 为
+`6a9e62dad033790aef722dbd370e0ce76ce17b73627ba3ae679f537049350b39`。
+离线 wheel 目录包含 Certbot 5.10.0、websockets 15.0.1 及其 Linux 依赖，
+依赖 wheel 采用 manylinux2014 / manylinux_2_28。
+在 Linux 构建机上准备好上述文件后运行以下命令。
+
+```sh
+python3 tools/build_linux_standalone.py \
+  --python-archive /path/to/python.tar.gz \
+  --sha256 6a9e62dad033790aef722dbd370e0ce76ce17b73627ba3ae679f537049350b39 \
+  --wheelhouse /path/to/wheels
+```
+
+## 2026-11-19 IP 证书开发分支补充
+
+`codex/ip-tls` 保留已验证的 Python 联机核心，新增 Linux 自包含分发和自动 IP 证书。
+自包含包自带可移植 CPython、websockets、Certbot 和依赖，
+目标服务器安装时无需系统 Python、venv 或 pip。
+统一入口为 `heartapp-server`，支持管理菜单、run、configure、get、health、
+certificate 与 acme 子命令。独立版本目录与 current 指针支持安装失败恢复。
+
+IP 证书部分在现有 Python 服务端上接入了自动 IP 证书，
+安装向导新增公网 IP 输入，默认采用 443。Certbot 在独立环境中运行，
+通过 TCP 80 的 HTTP-01 验证，申请 Let’s Encrypt shortlived IP 证书。
+Linux 分发包包含 `server/ip-tls.py`，续期由
+`heartapp-ip-renew.timer` 每 12 小时检查。
+
+部署时检查 IP SAN、有效期和证书私钥配对，证书目录原子切换，
+服务用户仅有组读权限。证书发生更新后重启服务，临时房间会清空。
+申请失败会停止安装，续期失败保留当前证书，日志保存在 systemd 和独立 ACME 日志目录。
+新增依赖仅用于 Linux 安装，现有客户端使用系统证书信任链。
+
+验证覆盖 Windows 全量测试、Qt 冒烟、联机冒烟，以及 Ubuntu 的证书部署和失败回滚。
+Ubuntu systemd 实装验证了首次安装、服务健康、真实双客户端登录与加入房间。
+人为注入升级失败后，旧版本指针、访问配置和服务运行状态均恢复。
+本地 WSS 双客户端测试使用临时测试证书，验证了登录、建房、加入与错误身份拒绝。
+自包含测试包名含 `standalone-test`。公网 CA 签发、真实云安全组连通性、
+Debian / OpenCloudOS 上完整 systemd 安装和真实续期仍待验收。
+发布前需生成包含新安装器和证书管理器的新 Release，现有 v1.4.2 安装包没有此功能。
+操作说明见 [服务端 README](../../server/README.md)。
+自包含包的具体安装步骤见 [Linux 自包含测试说明](../../server/Linux自包含测试说明.md)。
+
+2026-11-20 收尾检查通过 206 项回归，Windows 跳过的 3 项 Linux 证书文件测试
+已在 Ubuntu 补测。最终包还验证了专用账户绑定 443、WSS 双客户端登录入房、
+错误证书身份拒绝，以及内置运行环境中的真实证书部署与运行组切换。
+部署下载器补上了 8 秒连接超时、10 秒停滞检测和逐来源提示，
+正常传输显示进度，单次下载总时限 600 秒以适应低带宽服务器，
+修复了手动镜像前缀重复拼接。
+
+Linux 构建入口为 `tools/build_linux_standalone.py`，在 Linux 下传入已核验 SHA256 的
+python-build-standalone 安装压缩包与 Linux wheel 目录。使用 Python 3.12 x86_64 gnu，
+依赖 wheel 兼容 manylinux2014 / manylinux_2_28，包内 BUILD-INFO.json 记录依赖版本。
+正式发布时需要将此构建产物放入统一发布的 Linux 附件位置，再生成完整校验清单。
+目前主发布脚本的默认 Linux 构建仍兼容源码分发包，切勿将旧源码附件误当作自包含版。
+
 > **给 Codex 的交接**。这个文档的目标不是"再修一个 bug"，而是**重构服务端**。
 > 服务端功能是通的，但部署链路和安全模型是补丁堆出来的：一次真机安装踩出 6 个问题，
 > 每个都是"脚本层"的，说明架构选错了地方。

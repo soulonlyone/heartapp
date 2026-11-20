@@ -6,6 +6,7 @@ import argparse
 import codecs
 from contextlib import contextmanager
 import getpass
+import ipaddress
 import os
 from pathlib import Path
 import re
@@ -18,7 +19,7 @@ ENV_FILE = Path('/etc/heartapp-relay.env')
 UNIT_FILE = Path('/etc/systemd/system/heartapp-relay.service')
 SERVICE = 'heartapp-relay'
 HEADER = '# HeartApp managed configuration v1'
-DEFAULTS = dict(host='127.0.0.1', port='8765', max_clients='20', room_size='4', user='heartapp', password='')
+DEFAULTS = dict(host='127.0.0.1', port='8765', max_clients='20', room_size='4', user='heartapp', password='', tls_ip='')
 
 
 def env_key(key):
@@ -72,6 +73,12 @@ PASSWORD_PLACEHOLDER = 'validate-only'
 
 
 def validate(settings):
+    if settings.get('tls_ip'):
+        address = ipaddress.ip_address(settings['tls_ip'])
+        if not address.is_global:
+            raise ValueError('自动证书需要公网 IP 地址')
+        if settings['port'] == '80':
+            raise ValueError('TCP 80 用于证书验证，请选择其他服务端口')
     for key, low, high in (('port', 1, 65535), ('max_clients', 1, 10000), ('room_size', 1, 128)):
         if not settings[key].isascii() or not settings[key].isdigit() or not low <= int(settings[key]) <= high:
             raise ValueError(f'{key} 必须是 {low}～{high} 的整数')
@@ -237,16 +244,35 @@ def configure(args):
     password = os.environ.get('HEARTAPP_INSTALL_PASSWORD')
     if password is not None:
         settings['password'] = password
+    if getattr(args, 'tls_ip', None) and settings['port'] == '8765' and getattr(args, 'port', None) is None:
+        settings['port'] = '443'
     if not args.non_interactive:
         with terminal():
             print('\nHeartApp 服务端安装向导')
             print('这个密码用于客户端登录本服务器（不是房间密码），所有联机的人都要填同一个。')
             settings['password'] = read_password(settings['password'])
+            if not getattr(args, 'tls_ip', None):
+                while True:
+                    address = input(f"公网加密连接 IP [{settings['tls_ip'] or '留空使用本机或已有反向代理'}]：").strip()
+                    address = address or settings['tls_ip']
+                    try:
+                        validate(dict(settings, tls_ip=address))
+                    except ValueError as exc:
+                        print(exc)
+                        continue
+                    settings['tls_ip'] = address
+                    break
+            if settings['tls_ip']:
+                settings['host'] = '::' if ':' in settings['tls_ip'] else '0.0.0.0'
+                if settings['port'] == '8765' and getattr(args, 'port', None) is None:
+                    settings['port'] = '443'
+                print('将申请公网 IP 证书并自动续期，请在云安全组放行 TCP 80 和服务端口。')
+                print('此操作需要同意 Let’s Encrypt 服务条款：https://letsencrypt.org/repository/')
             settings['port'] = read_number(settings, 'port', '服务端口')
             validate(settings)
             print(f"\n监听地址 {settings['host']}，端口 {settings['port']}。")
             print('访问密码已设置——客户端登录服务器时填它。')
-            if settings['host'] not in ('127.0.0.1', 'localhost', '::1', '[::1]'):
+            if not settings['tls_ip'] and settings['host'] not in ('127.0.0.1', 'localhost', '::1', '[::1]'):
                 print(f"\n注意：监听 {settings['host']} 且未启用 TLS，"
                       '访问密码和心率会明文经过网络，仅适合可信局域网。')
                 print('公网使用请配置 HTTPS 反向代理并把监听地址改为 127.0.0.1。')
@@ -254,6 +280,8 @@ def configure(args):
             if not confirm('确认安装并启动服务？'):
                 print('已取消，原配置保留。')
                 return 1
+    if settings['tls_ip']:
+        settings['host'] = '::' if ':' in settings['tls_ip'] else '0.0.0.0'
     save_settings(settings)
     return 0
 
@@ -269,6 +297,11 @@ def menu():
         while True:
             settings = load_settings()
             print(f"\nHeartApp 服务端 · 端口 {settings['port']}")
+            if settings['tls_ip']:
+                address = settings['tls_ip']
+                if ':' in address:
+                    address = '[' + address + ']'
+                print(f"加密连接 wss://{address}:{settings['port']} · 每 12 小时检查证书续期")
             print('1 查看状态   2 启动   3 停止   4 重启\n5 修改访问密码   6 修改端口   7 查看最近日志   8 修改每房人数   0 退出')
             choice = input('请选择：').strip()
             try:
@@ -305,7 +338,8 @@ def menu():
 def main(argv=None):
     parser = argparse.ArgumentParser(description='HeartApp Linux 服务端安装向导与管理菜单')
     parser.add_argument('action', nargs='?', choices=('menu', 'configure', 'get'), default='menu')
-    parser.add_argument('--key', choices=('host', 'port', 'max_clients', 'room_size', 'user'))
+    parser.add_argument('--key', choices=('host', 'port', 'max_clients', 'room_size', 'user', 'tls_ip'))
+    parser.add_argument('--tls-ip', help='申请证书的公网 IP；自动部署表示同意 ACME 服务条款')
     parser.add_argument('--non-interactive', action='store_true', help='自动部署，使用已有配置或显式参数')
     for key in ('host', 'port', 'max_clients', 'room_size', 'user'):
         parser.add_argument('--' + key.replace('_', '-'))

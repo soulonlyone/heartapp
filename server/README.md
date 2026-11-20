@@ -23,6 +23,38 @@
 
 ## 一行部署（Linux）
 
+自包含测试版的安装入口与验证步骤见 [Linux 自包含测试说明](Linux自包含测试说明.md)。
+该包自带运行环境和 Certbot，安装时无需准备 Python 或 pip。
+下文涉及系统 Python 的要求适用于源码分发包。
+
+公网 IP 加密连接可在安装向导中填写公网 IP，服务端口建议保留为 443。
+自动 IP 证书需要 Python 3.10+，安装器会安装独立的 Certbot 5.4+，
+使用 Let’s Encrypt 的短期 IP 证书。向导确认安装表示同意证书机构服务条款。
+云安全组需要放行 TCP 80 和服务端口；80 端口必须保持可用，用于首次验证和续期。
+本机 firewalld/ufw 会自动放行，指定 `--no-open-port` 可跳过。
+已有网站占用 80 时会停止并提示，需要使用现有反向代理方案。
+
+安装成功后客户端填写 `wss://公网IP`。非 443 端口需写明
+`wss://公网IP:端口`；IPv6 使用 `wss://[公网IPv6]:端口`。
+全程验证证书，申请失败时停止安装并显示错误。
+
+自动化安装可传 `--tls-ip 公网IP --port 443 --non-interactive`，
+密码使用 `HEARTAPP_INSTALL_PASSWORD` 环境变量传入。
+修改已有 IP 证书配置时，重新运行安装向导。
+
+每 12 小时检查续期，证书更新后原子切换并重启服务，临时房间会清空。
+证书部署失败时保留上一套证书。运维命令如下。
+
+```sh
+sudo systemctl status heartapp-ip-renew.timer
+sudo journalctl -u heartapp-ip-renew.service -n 50 --no-pager
+# 主动检查续期，只在证书更新时重启联机服务
+sudo systemctl start heartapp-ip-renew.service
+```
+
+证书机构资料见 [IP 证书公告](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)
+和 [Certbot IP 证书说明](https://letsencrypt.org/2026/03/11/shorter-certs-certbot)。
+
 ```sh
 u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; s=; for p in '' 'https://ghfast.top/' 'https://gh-proxy.com/' 'https://ghproxy.net/'; do s=$(curl -fsSL --connect-timeout 8 --max-time 25 "${p}${u}" 2>/dev/null) && break; done; [ -n "$s" ] && echo "$s" | sudo bash || echo "所有下载源都失败，可手动下载 deploy.sh 后 sudo bash deploy.sh" >&2
 ```
