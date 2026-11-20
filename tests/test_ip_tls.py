@@ -17,6 +17,14 @@ tls = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tls)
 
 
+#: Certbot 5.x 只支持 Python 3.10+；3.9 上证书流程会主动拒绝。
+#: 自包含分发包内置 3.12，所以生产不受影响，这里按解释器版本跳过。
+NEEDS_TLS_PYTHON = unittest.skipIf(
+    sys.version_info < (3, 10), '自动 IP 证书需要 Python 3.10+'
+)
+
+
+@NEEDS_TLS_PYTHON
 class TestIPTLS(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
