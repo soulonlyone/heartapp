@@ -46,9 +46,9 @@ while [ $# -gt 0 ]; do
         --version) [ $# -ge 2 ] || die "--version 需要一个值"; VERSION="$2"; shift 2 ;;
         --mirror)  [ $# -ge 2 ] || die "--mirror 需要一个前缀"; MIRROR="$2"; shift 2 ;;
         --no-verify) NO_VERIFY=1; shift ;;
-        --non-interactive) ARGS+=("$1"); shift ;;
+        --non-interactive|--no-open-port) ARGS+=("$1"); shift ;;
         --dry-run) DRY_RUN=1; shift ;;
-        --password|--port|--max-clients|--room-size|--host|--user)
+        --password|--port|--max-clients|--room-size|--host|--user|--tls-ip)
             [ $# -ge 2 ] || die "$1 需要一个值"
             ARGS+=("$1" "$2"); shift 2 ;;
         -h|--help)
@@ -60,6 +60,7 @@ HeartApp Linux 一行部署
 --mirror 前缀 强制只用某个镜像，如 https://ghfast.top/（默认已自动回退，一般不用给）。
 --no-verify 取不到 SHA256SUMS 时仍然继续安装（默认会中止）。
 可传 --password、--port、--host、--max-clients、--room-size、--user。
+--tls-ip 公网IP 自动申请和续期 IP 证书，需 TCP 80 对外可达。
 安装后运行 sudo heartapp-server 打开管理菜单。
 HELP
             exit 0 ;;
@@ -75,6 +76,7 @@ SHA_TOOL=""
 for candidate in sha256sum shasum; do
     command -v "$candidate" >/dev/null 2>&1 && { SHA_TOOL="$candidate"; break; }
 done
+[ -n "$SHA_TOOL" ] || die "缺少 sha256sum 或 shasum，请安装校验工具后重试"
 
 # 直连不通时自动尝试的 GitHub 镜像；用 --mirror 可指定单一前缀。
 MIRRORS=("https://ghfast.top" "https://gh-proxy.com" "https://ghproxy.net")
@@ -95,11 +97,13 @@ fetch() {
         else
             target="${prefix%/}/$url"
         fi
-        if curl -fsSL --retry 1 --connect-timeout 10 --max-time 300 -o "$out" "$target" 2>/dev/null; then
+        say "  尝试 ${prefix:-GitHub 直连}"
+        if curl -fL --progress-bar --connect-timeout 8 --max-time 600 \
+            --speed-limit 1 --speed-time 10 -o "$out" "$target"; then
             [ -z "$quiet" ] && [ -n "$prefix" ] && say "  经镜像 $prefix 下载成功"
             return 0
         fi
-        [ -z "$quiet" ] && [ -z "$prefix" ] && say "  直连失败，尝试镜像 …"
+        say "  ${prefix:-GitHub 直连} 下载失败，检查上面的错误或继续尝试其他来源"
     done
     return 1
 }
@@ -125,13 +129,12 @@ say "目标版本：$TAG"
 
 ASSET="HeartApp-Server-${TAG}-linux.tar.gz"
 BASE="${HEARTAPP_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
-[ -n "$MIRROR" ] && BASE="${MIRROR%/}/$BASE"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 say "下载 $ASSET"
-fetch "$BASE/$ASSET" "$TMP/$ASSET" || die "下载失败：直连和镜像都没通（不是版本问题）。可选：
+fetch "$BASE/$ASSET" "$TMP/$ASSET" || die "下载失败，请检查上面的网络或 HTTP 错误。可选：
   1) 手动指定镜像：--mirror https://ghfast.top/
   2) 在能上 GitHub 的电脑下载 ${ASSET}，上传到服务器后按 server/README.md 手动安装
   3) 换一台能访问 GitHub 的机器运行服务端（只需 Python 3.9+ 和 websockets）"
@@ -187,7 +190,11 @@ tar -xzf "$TMP/$ASSET" -C "$TMP" || die "解压失败"
 SRC="$(find "$TMP" -maxdepth 2 -type d -name 'heartapp-server-*' | head -1)"
 [ -n "$SRC" ] || die "压缩包结构异常：找不到 heartapp-server-* 目录"
 [ -f "$SRC/server/install-linux.sh" ] || die "压缩包里没有 server/install-linux.sh"
-[ -f "$SRC/server/manage-linux.py" ] || die "该 Release 尚未包含交互向导，请指定新版 Linux 服务端 Release"
+if [ -x "$SRC/runtime/heartapp-server" ]; then
+    [ -f "$SRC/server/install-standalone.sh" ] || die "分发包缺少自包含安装器"
+else
+    [ -f "$SRC/server/manage-linux.py" ] || die "该 Release 尚未包含交互向导，请指定新版 Linux 服务端 Release"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
     say "dry-run：下载与校验通过，未执行安装"

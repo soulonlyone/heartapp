@@ -15,9 +15,14 @@
 #   配置   /etc/heartapp-relay.env（权限 600，含访问密码）
 #   服务   systemd 单元 heartapp-relay
 #
-# 只复制服务端需要的 4 个文件，不需要在服务器上装 Qt / BLE。
+# 只复制服务端和管理器需要的文件。
 
 set -euo pipefail
+
+PACKAGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -x "$PACKAGE_ROOT/runtime/heartapp-server" ]; then
+    exec bash "$PACKAGE_ROOT/server/install-standalone.sh" "$@"
+fi
 
 APP_DIR=/opt/heartapp-relay
 SERVICE=heartapp-relay
@@ -41,6 +46,7 @@ HeartApp Linux 服务端安装器（systemd）
 用法：sudo bash server/install-linux.sh [参数]
 
   --host ADDRESS       监听地址，默认 127.0.0.1；局域网直连才用 0.0.0.0
+  --tls-ip IP          自动申请并续期公网 IP 证书（需 Python 3.10+、TCP 80 可达）
   --no-open-port       不改本机防火墙（默认会在非环回监听时自动放行端口）
   --port PORT          服务端口，默认 8765
   --max-clients COUNT  总连接上限，默认 20
@@ -62,7 +68,7 @@ HELP
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --port|--max-clients|--room-size|--host|--password|--user)
+        --port|--max-clients|--room-size|--host|--password|--user|--tls-ip)
             [ $# -ge 2 ] || die "$1 缺少参数值（--help 查看用法）" ;;
     esac
     case "$1" in
@@ -70,6 +76,7 @@ while [ $# -gt 0 ]; do
         --max-clients)  MAX_CLIENTS="$2"; CONFIG_ARGS+=("--max-clients" "$2"); shift 2 ;;
         --room-size)    ROOM_SIZE="$2"; CONFIG_ARGS+=("--room-size" "$2"); shift 2 ;;
         --host)         BIND_HOST="$2"; CONFIG_ARGS+=("--host" "$2"); shift 2 ;;
+        --tls-ip)       CONFIG_ARGS+=("--tls-ip" "$2"); shift 2 ;;
         --no-open-port) OPEN_PORT=0; shift ;;
         --password)     PASSWORD="$2"; PASSWORD_SET=1; shift 2 ;;
         --user)         RUN_USER="$2"; CONFIG_ARGS+=("--user" "$2"); shift 2 ;;
@@ -85,6 +92,7 @@ done
 
 SRC_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 [ -f "$SRC_ROOT/heartapp/relay.py" ] || die "在 $SRC_ROOT 找不到 heartapp/relay.py，请在仓库里运行本脚本"
+[ -f "$SRC_ROOT/server/ip-tls.py" ] || die "分发包缺少 IP 证书管理器，请下载完整新版安装包"
 
 # 找一个可用的 Python 3.9+
 PY=""
@@ -109,7 +117,12 @@ fi
 PORT="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key port)"
 RUN_USER="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key user)"
 BIND_HOST="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key host)"
+TLS_IP="$("$PY" "$SRC_ROOT/server/manage-linux.py" get --key tls_ip)"
 unset PASSWORD
+
+if [ -d "/etc/systemd/system/${SERVICE}.service.d" ] && grep -Rq '^ExecStart=' "/etc/systemd/system/${SERVICE}.service.d"; then
+    die "检测到旧服务覆盖配置中的 ExecStart，请移除或更新覆盖配置后重新安装"
+fi
 
 # 运行用户（仅用于降低权限，本身不需要登录）
 if ! id "$RUN_USER" >/dev/null 2>&1; then
@@ -131,6 +144,7 @@ install -m 644 "$SRC_ROOT/heartapp/room_protocol.py" "$APP_DIR/heartapp/room_pro
 install -m 644 "$SRC_ROOT/heartapp/relay.py"         "$APP_DIR/heartapp/relay.py"
 install -m 644 "$SRC_ROOT/heartapp/lobby.py"         "$APP_DIR/heartapp/lobby.py"
 install -m 644 "$SRC_ROOT/server/requirements.txt"   "$APP_DIR/requirements.txt"
+install -m 644 "$SRC_ROOT/server/ip-tls.py" "$APP_DIR/ip-tls.py"
 
 log "重建虚拟环境并安装依赖（只有 websockets，一般 1～2 分钟）"
 # 每次安装都重建：升级时复用旧 venv 会执行上一个版本留下的解释器和 pip。
@@ -169,6 +183,13 @@ LAUNCHER
 chmod 755 /usr/local/bin/heartapp-server
 
 PLAINTEXT_FLAG=""
+TLS_FLAG=""
+if [ -n "$TLS_IP" ]; then
+    TLS_ARGS=()
+    [ "$OPEN_PORT" -eq 1 ] || TLS_ARGS+=(--no-open-port)
+    "$APP_DIR/venv/bin/python" "$APP_DIR/ip-tls.py" setup "${TLS_ARGS[@]}"
+    TLS_FLAG=" --cert /etc/heartapp-tls/current/fullchain.pem --key /etc/heartapp-tls/current/privkey.pem"
+else
 case "$BIND_HOST" in
     127.0.0.1|localhost|::1|"[::1]") ;;
     *)
@@ -177,8 +198,13 @@ case "$BIND_HOST" in
         log "      仅适合可信局域网；公网请配置 HTTPS 反代并改用 --host 127.0.0.1"
         ;;
 esac
+fi
 
 log "写入 systemd 服务 /etc/systemd/system/${SERVICE}.service"
+CAPABILITIES=""
+if [ -n "$TLS_IP" ] || [ "$PORT" -lt 1024 ]; then
+    CAPABILITIES="CAP_NET_BIND_SERVICE"
+fi
 cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
 [Unit]
 Description=HeartApp relay (self-hosted heart-rate rooms)
@@ -191,12 +217,14 @@ User=${RUN_USER}
 Group=${RUN_USER}
 EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay${PLAINTEXT_FLAG} --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
+ExecStart=${APP_DIR}/venv/bin/python -m heartapp.relay${PLAINTEXT_FLAG}${TLS_FLAG} --host \${HEARTAPP_RELAY_HOST} --port \${HEARTAPP_RELAY_PORT} --max-clients \${HEARTAPP_RELAY_MAX_CLIENTS} --room-size \${HEARTAPP_RELAY_ROOM_SIZE}
 Restart=on-failure
 RestartSec=3
 
-# 加固：服务端不需要写文件、不需要额外权限
+# 加固：低端口仅授予绑定权限，服务以专用账户运行。
 NoNewPrivileges=true
+AmbientCapabilities=${CAPABILITIES}
+CapabilityBoundingSet=${CAPABILITIES}
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
@@ -243,7 +271,13 @@ fi
 
 log "健康检查"
 HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
-if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 3 "$HEALTH_URL"; then
+if [ -n "$TLS_IP" ]; then
+    HEALTH_IP="$TLS_IP"
+    [[ "$TLS_IP" != *:* ]] || HEALTH_IP="[$TLS_IP]"
+    HEALTH_URL="https://${HEALTH_IP}:${PORT}/healthz"
+    curl -fsS --connect-timeout 5 --max-time 10 --connect-to "${HEALTH_IP}:${PORT}:localhost:${PORT}" "$HEALTH_URL" \
+        || die "本机 TLS 健康检查失败，请查看 journalctl -u heartapp-relay"
+elif command -v curl >/dev/null 2>&1 && curl -fsS --max-time 3 "$HEALTH_URL"; then
     :
 else
     log "健康检查未返回（若服务监听非本机地址属正常），可手动确认：curl ${HEALTH_URL}"
@@ -270,7 +304,12 @@ cat <<EOF
 
  客户端连接
 EOF
-if [ -z "$PLAINTEXT_FLAG" ]; then
+if [ -n "$TLS_IP" ]; then
+    printf '   wss://%s:%s\n' "$HEALTH_IP" "$PORT"
+    printf '   已设置每 12 小时检查续期，证书更新后会重启服务，临时房间会清空。\n'
+    printf '   续期状态：systemctl status heartapp-ip-renew.timer\n'
+    printf '   续期日志：journalctl -u heartapp-ip-renew.service\n'
+elif [ -z "$PLAINTEXT_FLAG" ]; then
     printf '   本机使用当前监听地址和端口（默认 127.0.0.1:%s）。
 ' "$PORT"
     printf '   远程客户端请通过 TLS 反向代理连接，填写 wss://你的域名。

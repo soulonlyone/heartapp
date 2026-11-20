@@ -96,7 +96,7 @@ class TestLinuxManager(unittest.TestCase):
         args = argparse.Namespace(non_interactive=False)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
                 patch.object(manager, '_masked_input', side_effect=['new-pass-1', 'new-pass-1']), \
-                patch('builtins.input', side_effect=['', 'n']):
+                patch('builtins.input', side_effect=['', '', 'n']):
             self.assertEqual(manager.configure(args), 1)
         self.assertFalse(manager.ENV_FILE.exists())
 
@@ -104,7 +104,7 @@ class TestLinuxManager(unittest.TestCase):
         args = argparse.Namespace(non_interactive=False)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
                 patch.object(manager, '_masked_input', side_effect=['one-pass-1', 'two-pass-1', 'three-pass', 'three-pass']), \
-                patch('builtins.input', side_effect=['invalid', '65536', '9002', 'y']):
+                patch('builtins.input', side_effect=['', 'invalid', '65536', '9002', 'y']):
             self.assertEqual(manager.configure(args), 0)
         self.assertEqual(manager.load_settings()['password'], 'three-pass')
         self.assertEqual(manager.load_settings()['port'], '9002')
@@ -114,7 +114,7 @@ class TestLinuxManager(unittest.TestCase):
         manager.save_settings(settings)
         with patch.object(manager, 'terminal', return_value=nullcontext()), \
                 patch.object(manager, '_masked_input', return_value=''), \
-                patch('builtins.input', side_effect=['', 'y']):
+                patch('builtins.input', side_effect=['', '', 'y']):
             self.assertEqual(manager.configure(argparse.Namespace(non_interactive=False)), 0)
         self.assertEqual(manager.load_settings(), settings)
 
@@ -123,6 +123,19 @@ class TestLinuxManager(unittest.TestCase):
             with self.assertRaises(ValueError):
                 manager.configure(argparse.Namespace(non_interactive=True))
         self.assertFalse(manager.ENV_FILE.exists())
+
+    def test_public_ip_enables_tls_and_preserves_explicit_port(self):
+        with patch.dict(os.environ, {'HEARTAPP_INSTALL_PASSWORD': 'secret-pass'}):
+            manager.configure(argparse.Namespace(non_interactive=True, tls_ip='8.8.8.8'))
+            self.assertEqual(manager.load_settings()['port'], '443')
+            self.assertEqual(manager.load_settings()['host'], '0.0.0.0')
+            manager.configure(argparse.Namespace(non_interactive=True, tls_ip='8.8.8.8', port='9443'))
+            self.assertEqual(manager.load_settings()['port'], '9443')
+
+    def test_tls_rejects_private_ip_and_challenge_port(self):
+        for address, port in (('127.0.0.1', '443'), ('192.168.1.2', '443'), ('8.8.8.8', '80')):
+            with self.subTest(address=address, port=port), self.assertRaises(ValueError):
+                manager.validate(dict(manager.DEFAULTS, tls_ip=address, port=port, password='secret-pass'))
 
     def test_atomic_write_failure_preserves_config(self):
         settings = dict(manager.DEFAULTS, password='before-pw')

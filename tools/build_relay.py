@@ -34,7 +34,7 @@ EXE_NAME = "HeartApp-Server.exe"
 
 #: 服务端只需要这些文件；不要牵进 Qt / BLE / 数据库。
 SERVER_FILES = ["__init__.py", "room_protocol.py", "relay.py", "lobby.py"]
-SERVER_GUIDES = ["Windows面板说明.md", "Linux说明.md", "Docker说明.md", "nginx.conf.example"]
+SERVER_GUIDES = ["Windows面板说明.md", "Linux说明.md", "Linux自包含测试说明.md", "Docker说明.md", "nginx.conf.example"]
 
 #: 服务端 exe 用不到的重量级模块，显式排掉以减小体积。
 EXCLUDES = [
@@ -128,6 +128,7 @@ def build_linux_tarball() -> Path:
         _add(tar, ROOT / "server" / "requirements.txt", f"{prefix}/server/requirements.txt")
         _add(tar, ROOT / "server" / "install-linux.sh", f"{prefix}/server/install-linux.sh", 0o755)
         _add(tar, ROOT / "server" / "manage-linux.py", f"{prefix}/server/manage-linux.py")
+        _add(tar, ROOT / "server" / "ip-tls.py", f"{prefix}/server/ip-tls.py")
         _add(tar, ROOT / "server" / "README.md", f"{prefix}/server/README.md")
         _add(tar, ROOT / "server" / ".env.example", f"{prefix}/server/.env.example")
         for name in SERVER_GUIDES:
