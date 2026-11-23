@@ -60,7 +60,7 @@ less deploy.sh
 sudo bash deploy.sh
 ```
 
-此交互流程需要包含 `server/manage-linux.py` 的新版 Linux Release。
+自 v1.4.3 起安装逻辑内置在包内的 `heartapp-server` 里，不再需要单独的 Python 脚本。
 旧版发布包需更新后才能使用本流程。
 
 
@@ -92,7 +92,7 @@ Python 应为 3.9 或更高。若系统没有 systemd，请使用 Docker 方案�
 ```sh
 git clone --branch main https://github.com/soulonlyone/heartapp.git heartapp
 cd heartapp
-bash server/install-linux.sh --help
+./runtime/heartapp-server install --help
 ```
 
 正式部署宜固定经过验收的发布标签或提交。已有仓库不必重复 clone，先确认所在分支与版本。
@@ -103,7 +103,7 @@ bash server/install-linux.sh --help
 在源码仓库或 Linux 分发包根目录执行。
 
 ```sh
-sudo bash server/install-linux.sh
+sudo ./runtime/heartapp-server install --package-root .
 ```
 
 跟随向导输入密码、确认密码、选择端口并确认安装。回车使用默认端口，
@@ -112,7 +112,7 @@ sudo bash server/install-linux.sh
 使用反向代理时，可以预设仅本机监听。
 
 ```sh
-sudo bash server/install-linux.sh --host 127.0.0.1
+sudo ./runtime/heartapp-server install --package-root . --host 127.0.0.1
 ```
 
 安装完成后检查服务。
@@ -139,7 +139,7 @@ curl --fail http://127.0.0.1:8765/healthz
 `--room-size`，未显式修改的设置会保留。配置文件由管理器引用和转义，
 包含空格、引号、反斜杠的密码也会原样保留。
 
-`heartapp-server --help`、`bash server/install-linux.sh --help`、
+`heartapp-server --help`、`./runtime/heartapp-server install --help`、
 `bash server/deploy.sh --help` 均可查看帮助。
 
 ## 5. 日常运维
@@ -240,7 +240,7 @@ sudo rm -r /opt/heartapp-relay
 ## 9. 命令行帮助与前台排错
 
 ```sh
-bash server/install-linux.sh --help
+./runtime/heartapp-server install --help
 cd /opt/heartapp-relay
 /opt/heartapp-relay/venv/bin/python -m heartapp.relay --help
 /opt/heartapp-relay/venv/bin/python -m heartapp.relay --version

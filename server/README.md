@@ -38,7 +38,7 @@
 `wss://公网IP:端口`；IPv6 使用 `wss://[公网IPv6]:端口`。
 全程验证证书，申请失败时停止安装并显示错误。
 
-自动化安装可传 `--tls-ip 公网IP --port 443 --non-interactive`，
+自动化安装可传 `--public-ip 公网IP --port 443 --non-interactive`，
 密码使用 `HEARTAPP_INSTALL_PASSWORD` 环境变量传入。
 修改已有 IP 证书配置时，重新运行安装向导。
 
@@ -153,7 +153,7 @@ scp HeartApp-Server-v<版本>-linux.tar.gz you@server:/tmp/
 ```sh
 # 服务器上
 cd /tmp && tar -xzf HeartApp-Server-v<版本>-linux.tar.gz
-cd heartapp-server-<版本> && sudo bash server/install-linux.sh
+cd heartapp-server-<版本> && sudo ./runtime/heartapp-server install --package-root .
 ```
 
 **3. 直接放到有一台能访问 GitHub 的机器上编译/运行**（服务端只需要 Python + websockets）
@@ -174,6 +174,43 @@ sudo systemctl disable --now heartapp-relay
 sudo rm -rf /opt/heartapp-relay /etc/heartapp-relay.env /etc/systemd/system/heartapp-relay.service
 sudo rm -f /usr/local/bin/heartapp-server && sudo systemctl daemon-reload
 ```
+
+## 卸载
+
+服务端自带卸载命令，不再需要手工删目录：
+
+```sh
+# 先看会删什么（不做任何修改）
+sudo ./runtime/heartapp-server uninstall --dry-run
+
+# 卸载：停服务、删单元、删 /opt 与配置、删证书、关闭防火墙端口
+sudo ./runtime/heartapp-server uninstall
+
+# 想保留配置（例如只是重装）
+sudo ./runtime/heartapp-server uninstall --keep-config
+
+# 连系统用户一起删
+sudo ./runtime/heartapp-server uninstall --remove-user
+```
+
+装好之后也可以直接用 `/usr/local/bin/heartapp-server`：
+
+```sh
+sudo heartapp-server uninstall --dry-run
+```
+
+卸载会清掉：
+
+| 内容 | 说明 |
+|---|---|
+| systemd 服务与续期定时器 | `heartapp-relay`、`heartapp-ip-renew.*` |
+| 程序目录 | `/opt/heartapp-relay`（含历史版本） |
+| 命令入口 | `/usr/local/bin/heartapp-server` |
+| 配置 | `/etc/heartapp-relay/config.json`（`--keep-config` 可保留） |
+| 证书与 ACME | `/etc/heartapp-tls`、`/etc/heartapp-acme`、`/var/lib|log/heartapp-acme` |
+| 防火墙规则 | 服务端口（`--no-open-port` 可跳过） |
+
+服务端**不保存任何心率历史**，所以没有数据要备份。
 
 ## Docker
 

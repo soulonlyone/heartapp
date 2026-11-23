@@ -40,13 +40,14 @@ def main() -> None:
         site = next((runtime / 'python/lib').glob('python3.*/site-packages'))
         package = site / 'heartapp'
         package.mkdir()
-        for name in ('__init__.py', 'room_protocol.py', 'relay.py', 'lobby.py', 'server_cli.py'):
+        # 安装/配置/证书逻辑全部在包里，安装时不需要任何 bash 脚本。
+        modules = (
+            '__init__.py', 'room_protocol.py', 'relay.py', 'lobby.py',
+            'server_cli.py', 'server_config.py', 'server_system.py',
+            'server_install.py', 'server_tls.py',
+        )
+        for name in modules:
             shutil.copyfile(ROOT / 'heartapp' / name, package / name)
-        helpers = package / '_server'
-        helpers.mkdir()
-        (helpers / '__init__.py').write_text('', encoding='utf-8')
-        shutil.copyfile(ROOT / 'server/manage-linux.py', helpers / 'manage_linux.py')
-        shutil.copyfile(ROOT / 'server/ip-tls.py', helpers / 'ip_tls.py')
         launcher = runtime / 'heartapp-server'
         launcher.write_text(
             '#!/bin/sh\nset -eu\n'
@@ -57,9 +58,11 @@ def main() -> None:
         launcher.chmod(0o755)
         server = folder / 'server'
         server.mkdir()
-        for name in ('install-linux.sh', 'install-standalone.sh', 'README.md', 'Linux说明.md', 'Linux自包含测试说明.md'):
-            content = (ROOT / 'server' / name).read_text(encoding='utf-8')
-            (server / name).write_text(content, encoding='utf-8', newline='\n')
+        for name in ('README.md', 'Linux说明.md', 'Linux自包含测试说明.md'):
+            source = ROOT / 'server' / name
+            if source.is_file():
+                (server / name).write_text(source.read_text(encoding='utf-8'),
+                                           encoding='utf-8', newline='\n')
         shutil.copyfile(ROOT / 'LICENSE', folder / 'LICENSE')
         subprocess.run([str(launcher), '--version'], check=True)
         subprocess.run([str(launcher), 'acme', '--version'], check=True)

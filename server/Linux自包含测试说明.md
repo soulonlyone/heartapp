@@ -12,7 +12,7 @@
 sha256sum -c SHA256SUMS.txt
 tar -xzf HeartApp-Server-v1.4.2-standalone-test-linux.tar.gz
 cd heartapp-server-1.4.2-standalone-test
-sudo bash server/install-linux.sh
+sudo ./runtime/heartapp-server install --package-root .
 ```
 
 向导依次设置服务器访问密码、公网 IP、服务端口并确认安装。

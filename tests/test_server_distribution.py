@@ -85,26 +85,28 @@ class TestDockerDistribution(unittest.TestCase):
 
 
 class TestDeploymentHelp(unittest.TestCase):
-    def run_installer(self, *arguments):
-        bash = str(Path(SH).with_name("bash.exe")) if os.name == "nt" and SH else shutil.which("bash")
-        if not bash or not Path(bash).exists():
-            self.skipTest("需要 Bash")
-        env = dict(os.environ)
-        env["PATH"] = str(Path(bash).parent) + os.pathsep + env.get("PATH", "")
-        return subprocess.run([bash, "server/install-linux.sh", *arguments], cwd=ROOT,
-                              env=env, capture_output=True, timeout=10)
+    """安装/卸载现在是包内 CLI，不再有 bash 安装器。"""
 
-    def test_installer_help_lists_parameters_without_root(self):
-        result = self.run_installer("--help")
+    def run_cli(self, *arguments):
+        return subprocess.run([sys.executable, "-m", "heartapp.server_cli", *arguments],
+                              cwd=ROOT, capture_output=True, timeout=20)
+
+    def test_install_help_lists_parameters_without_root(self):
+        result = self.run_cli("install", "--help")
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-        for argument in ("--host", "--port", "--max-clients", "--room-size", "--user", "--password"):
+        for argument in ("--host", "--port", "--max-clients", "--room-size",
+                         "--user", "--password", "--public-ip", "--dry-run"):
             self.assertIn(argument, result.stdout.decode("utf-8"))
 
-    def test_installer_missing_value_or_unknown_option_fails_before_install(self):
-        for argument in ("--port", "--unknown"):
-            result = self.run_installer(argument)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("--help", result.stderr.decode("utf-8"))
+    def test_uninstall_help_mentions_keep_config(self):
+        result = self.run_cli("uninstall", "--help")
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertIn("--keep-config", result.stdout.decode("utf-8"))
+
+    def test_install_rejects_unknown_option_before_doing_anything(self):
+        result = self.run_cli("install", "--unknown")
+        self.assertEqual(result.returncode, 2)
+
 
     def test_relay_help_and_version_exit_without_starting(self):
         env = dict(os.environ, PYTHONIOENCODING="utf-8")

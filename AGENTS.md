@@ -80,7 +80,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 5. 常用命令
 
 ```powershell
-# 跑全部单元测试（当前 206 个）
+# 跑全部单元测试（当前 208 个）
 .venv\Scripts\python.exe run_tests.py
 
 # Qt 界面端到端冒烟（自动操作，不需要人看；必须看到 QT SMOKE PASS）
@@ -164,7 +164,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 - **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
   截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
 - **发布用 `tools/build_release.py`**：一个版本一个 Release，客户端（1 个 zip）
-  + 服务端（4 个）+ 服务端面板放在一起；签名必须在压缩之前
+  + 服务端（Windows exe / Linux 自包含包 / Docker 共 3 个）+ 服务端面板放在一起；签名必须在压缩之前
 - PyInstaller `--exclude-module`：GUI 版排除 `tkinter`（已无代码引用，只为瘦身）；
   CLI 版还要排除 `PySide6` + `shiboken6`（否则 CLI 也有 37MB）
 

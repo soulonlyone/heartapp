@@ -27,7 +27,7 @@
 #   HEARTAPP_BASE_URL          覆盖下载地址前缀（测试或镜像站用）
 #   HEARTAPP_CHECKSUM_BASE_URL 覆盖校验和来源前缀（默认取仓库里的 server/checksums）
 #
-# 流程：下载 Release 里的服务端压缩包 → 校验 SHA256 → 解压 → 运行其中的 install-linux.sh
+# 流程：下载 Release 里的服务端压缩包 → 校验 SHA256 → 解压 → 运行包内 heartapp-server install
 
 set -euo pipefail
 
@@ -77,6 +77,11 @@ for candidate in sha256sum shasum; do
     command -v "$candidate" >/dev/null 2>&1 && { SHA_TOOL="$candidate"; break; }
 done
 [ -n "$SHA_TOOL" ] || die "缺少 sha256sum 或 shasum，请安装校验工具后重试"
+
+# 安装器参数改名：--tls-ip -> --public-ip
+for i in "${!ARGS[@]}"; do
+    [ "${ARGS[$i]}" = "--tls-ip" ] && ARGS[$i]="--public-ip"
+done
 
 # 直连不通时自动尝试的 GitHub 镜像；用 --mirror 可指定单一前缀。
 MIRRORS=("https://ghfast.top" "https://gh-proxy.com" "https://ghproxy.net")
@@ -199,17 +204,12 @@ say "解压"
 tar -xzf "$TMP/$ASSET" -C "$TMP" || die "解压失败"
 SRC="$(find "$TMP" -maxdepth 2 -type d -name 'heartapp-server-*' | head -1)"
 [ -n "$SRC" ] || die "压缩包结构异常：找不到 heartapp-server-* 目录"
-[ -f "$SRC/server/install-linux.sh" ] || die "压缩包里没有 server/install-linux.sh"
-if [ -x "$SRC/runtime/heartapp-server" ]; then
-    [ -f "$SRC/server/install-standalone.sh" ] || die "分发包缺少自包含安装器"
-else
-    [ -f "$SRC/server/manage-linux.py" ] || die "该 Release 尚未包含交互向导，请指定新版 Linux 服务端 Release"
-fi
+[ -x "$SRC/runtime/heartapp-server" ] || die "这个 Linux 包缺少自包含运行环境，请使用 v1.4.3 之后的版本"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     say "dry-run：下载与校验通过，未执行安装"
     say "实际会运行："
-    printf '  cd %q\n  bash server/install-linux.sh' "$SRC"
+    printf '  %q install --package-root %q' "$SRC/runtime/heartapp-server" "$SRC"
     for a in ${ARGS[@]+"${ARGS[@]}"}; do printf ' %q' "$a"; done
     printf '\n'
     # 保留解压内容方便检查
@@ -219,7 +219,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # ---- 安装 ----
-say "开始安装（复制代码到 /opt/heartapp-relay 并注册 systemd 服务）"
-cd "$SRC"
+[ "$(id -u)" -eq 0 ] || die "需要 root 权限，请用 sudo 运行"
+say "开始安装（安装到 /opt/heartapp-relay 并注册 systemd 服务）"
 # shellcheck disable=SC2068
-bash server/install-linux.sh ${ARGS[@]+"${ARGS[@]}"}
+"$SRC/runtime/heartapp-server" install --package-root "$SRC" ${ARGS[@]+"${ARGS[@]}"}

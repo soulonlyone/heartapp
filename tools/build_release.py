@@ -41,11 +41,9 @@ ARTIFACTS = {
     # 客户端只有一个包：解压即用、数据在程序旁。
     # 单文件版和独立命令行版不再发布，命令行版包含在这个 zip 内。
     "client_zip":     f"HeartApp-v{V}-win64.zip",
-    # -linux.tar.gz 留给自包含包：一键安装脚本按这个名字下载，装完不需要 Python。
-    # 旧式源码包改名 -linux-source.tar.gz 作为备用。
+    # Linux 只有自包含包：安装/卸载逻辑都在包内的 heartapp-server 里。
     "server_exe":     f"HeartApp-Server-v{V}-win64.exe",
     "server_linux":   f"HeartApp-Server-v{V}-linux.tar.gz",
-    "server_source":  f"HeartApp-Server-v{V}-linux-source.tar.gz",
     "server_docker":  f"HeartApp-Server-v{V}-docker.tar.gz",
     "panel_zip":      f"HeartApp-Server-Panel-v{V}-win64.zip",
 }
@@ -88,9 +86,8 @@ def assemble() -> list:
     _zip_dir(DIST / "心率记录仪", OUT / ARTIFACTS["client_zip"])
     produced.append(OUT / ARTIFACTS["client_zip"])
 
-    print("  服务端三个包 …")
+    print("  服务端 Windows / Docker 包 …")
     for key, name in (("server_exe", f"HeartApp-Server-v{V}-win64.exe"),
-                      ("server_source", f"HeartApp-Server-v{V}-linux.tar.gz"),
                       ("server_docker", f"HeartApp-Server-v{V}-docker.tar.gz")):
         src = DIST / "relay" / name
         dst = OUT / ARTIFACTS[key]

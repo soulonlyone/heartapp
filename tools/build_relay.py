@@ -3,7 +3,7 @@
 产出三个可直接分发的文件（dist/relay/）：
 
     HeartApp-Server-<版本>-win64.exe            Windows 独立服务端，不需要装 Python
-    HeartApp-Server-<版本>-linux.tar.gz         Linux 源码包（含 install-linux.sh）
+    HeartApp-Server-<版本>-docker.tar.gz        Docker 构建上下文
     HeartApp-Server-<版本>-docker.tar.gz        Docker 构建上下文（不用克隆仓库）
     SHA256SUMS.txt                            校验和
 
@@ -74,7 +74,7 @@ def build_windows_exe() -> Path:
         args += ["--exclude-module", name]
     args.append(str(ROOT / "packaging" / "relay_entry.py"))
 
-    print("\n[1/4] 打包 Windows 独立服务端 …")
+    print("\n[1/3] 打包 Windows 独立服务端 …")
     if run(args) != 0:
         raise SystemExit("PyInstaller 失败")
     exe = DIST / EXE_NAME
@@ -88,7 +88,7 @@ def sign_exe() -> None:
     script = ROOT / "tools" / "sign_exe.ps1"
     if not script.exists():
         return
-    print("\n[2/4] 给 exe 签名 …")
+    print("\n[2/3] 给 exe 签名 …")
     shell = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
     try:
         code = subprocess.run(
@@ -117,28 +117,9 @@ def _add(tar: tarfile.TarFile, source: Path, arcname: str, mode: int = 0o644) ->
     print(f"    + {arcname}")
 
 
-def build_linux_tarball() -> Path:
-    """Linux 源码包：解压后 sudo bash server/install-linux.sh 即可。"""
-    print("\n[3/4] 打 Linux 源码包 …")
-    prefix = f"heartapp-server-{VERSION}"
-    target = OUT / f"HeartApp-Server-v{VERSION}-linux.tar.gz"
-    with tarfile.open(target, "w:gz") as tar:
-        for name in SERVER_FILES:
-            _add(tar, ROOT / "heartapp" / name, f"{prefix}/heartapp/{name}")
-        _add(tar, ROOT / "server" / "requirements.txt", f"{prefix}/server/requirements.txt")
-        _add(tar, ROOT / "server" / "install-linux.sh", f"{prefix}/server/install-linux.sh", 0o755)
-        _add(tar, ROOT / "server" / "manage-linux.py", f"{prefix}/server/manage-linux.py")
-        _add(tar, ROOT / "server" / "ip-tls.py", f"{prefix}/server/ip-tls.py")
-        _add(tar, ROOT / "server" / "README.md", f"{prefix}/server/README.md")
-        _add(tar, ROOT / "server" / ".env.example", f"{prefix}/server/.env.example")
-        for name in SERVER_GUIDES:
-            _add(tar, ROOT / "server" / name, f"{prefix}/server/{name}")
-    return target
-
-
 def build_docker_tarball() -> Path:
     """Docker 构建上下文：不用克隆仓库，docker build 就能用。"""
-    print("\n[4/4] 打 Docker 构建包 …")
+    print("\n[3/3] 打 Docker 构建包 …")
     prefix = f"heartapp-server-{VERSION}"
     target = OUT / f"HeartApp-Server-v{VERSION}-docker.tar.gz"
     with tarfile.open(target, "w:gz") as tar:
@@ -218,14 +199,14 @@ def main() -> int:
     exe_target = OUT / f"HeartApp-Server-v{VERSION}-win64.exe"
     shutil.move(str(exe), str(exe_target))
 
-    linux = build_linux_tarball()
     docker = build_docker_tarball()
-    sums = write_checksums([exe_target, linux, docker])
+    sums = write_checksums([exe_target, docker])
 
     print("\n" + "=" * 60)
     print(f"服务端分发包 v{VERSION}（{OUT.relative_to(ROOT)}）")
     print("=" * 60)
-    for path in (exe_target, linux, docker, sums):
+    print("  Linux 自包含包由 tools/build_linux_standalone.py 单独构建")
+    for path in (exe_target, docker, sums):
         print(f"  {path.name:<42} {path.stat().st_size / 1024 / 1024:6.1f} MB")
     return 0
 

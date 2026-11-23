@@ -13,7 +13,7 @@
 curl -fsSL https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行 `install-linux.sh`」，
+等价于「下载对应 Release 的服务端压缩包 → 校验 SHA256 → 解压 → 运行包内 `heartapp-server install`」，
 最终把代码装到 `/opt/heartapp-relay` 并注册 systemd 服务 `heartapp-relay`。
 参数会原样转发给安装脚本：
 
