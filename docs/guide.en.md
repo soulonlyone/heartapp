@@ -97,7 +97,7 @@ allow the app under `Windows Security → Virus & threat protection → Ransomwa
 Controlled folder access`.
 
 **Double-click does nothing** — read `启动错误.log` in the program folder; usually antivirus.
-Try the portable build.
+See the antivirus FAQ in the README.
 
 **Session still shows "recording"** — stale sessions are closed automatically on start.
 

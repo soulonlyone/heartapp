@@ -1,11 +1,11 @@
-"""把 heartapp 打包成免安装的便携版（只有文件夹版）。
+"""把 heartapp 打包成免安装的客户端（只有文件夹版）。
 
     .venv\\Scripts\\python.exe tools\\build_exe.py
 
 产物（都在 dist\\ 下）：
 
-    心率记录仪-便携版\\图形界面版\\心率记录仪.exe   图形界面
-    心率记录仪-便携版\\命令行版\\心率记录仪-命令行.exe 命令行
+    心率记录仪\\图形界面版\\心率记录仪.exe   图形界面
+    心率记录仪\\命令行版\\心率记录仪-命令行.exe 命令行
 
 为什么只发文件夹版
 ------------------
@@ -44,7 +44,7 @@ EXCLUDES = [
 
 GUI_EXE = "心率记录仪.exe"
 CLI_EXE = "心率记录仪-命令行.exe"
-PORTABLE_DIR = "心率记录仪-便携版"
+PORTABLE_DIR = "心率记录仪"
 
 
 VERSION_INFO_DIR = BUILD / "version_info"
@@ -161,7 +161,8 @@ def _remove_tree(path: Path) -> None:
 def _prepare_dist() -> None:
     DIST.mkdir(parents=True, exist_ok=True)
     # 顺带清掉旧版本可能留下的单文件产物，避免它们混进发布目录。
-    for name in (PORTABLE_DIR, "HeartAppPortable", "HeartAppCLIPortable",
+    for name in (PORTABLE_DIR, "心率记录仪-便携版",
+                 "HeartAppPortable", "HeartAppCLIPortable", "HeartAppGUI", "HeartAppCLI",
                  GUI_EXE, CLI_EXE, "_internal", "HeartApp.exe", "HeartAppCLI.exe"):
         _remove_tree(DIST / name)
 
@@ -187,7 +188,7 @@ def build_gui_onedir() -> int:
             "--windowed",
             "--exclude-module", "tkinter",
             "--version-file", str(_version_file("HeartApp", "HeartApp 心率监控", "HeartApp.exe")),
-            "--name", "HeartAppPortable",
+            "--name", "HeartAppGUI",
             "--add-data", f"{ICON};.",
             "--workpath", str(BUILD / "onedir_gui"),
             str(ROOT / "packaging" / "qt_entry.py"),
@@ -202,7 +203,7 @@ def build_cli_onedir() -> int:
             "--onedir",
             "--console",
             "--version-file", str(_version_file("HeartAppCLI", "HeartApp 命令行", "HeartAppCLI.exe")),
-            "--name", "HeartAppCLIPortable",
+            "--name", "HeartAppCLI",
             "--exclude-module", "tkinter",
             "--exclude-module", "PySide6",
             "--exclude-module", "shiboken6",
@@ -230,15 +231,15 @@ def _rename_file(src: Path, dst: Path) -> bool:
 
 def rename_onedir() -> bool:
     print("\n重命名文件夹版 …")
-    gui_src = DIST / "HeartAppPortable"
-    cli_src = DIST / "HeartAppCLIPortable"
+    gui_src = DIST / "HeartAppGUI"
+    cli_src = DIST / "HeartAppCLI"
     if not gui_src.is_dir() or not cli_src.is_dir():
         print("  [x] 没有找到 onedir 产物目录")
         return False
 
-    # 先把两个 exe 各自改成中文名，再把目录合并成一个便携版文件夹
-    _rename_file(gui_src / "HeartAppPortable.exe", gui_src / GUI_EXE)
-    _rename_file(cli_src / "HeartAppCLIPortable.exe", cli_src / CLI_EXE)
+    # 先把两个 exe 各自改成中文名，再把目录合并成一个客户端文件夹
+    _rename_file(gui_src / "HeartAppGUI.exe", gui_src / GUI_EXE)
+    _rename_file(cli_src / "HeartAppCLI.exe", cli_src / CLI_EXE)
 
     target = DIST / PORTABLE_DIR
     if target.exists():
@@ -295,7 +296,7 @@ def main() -> int:
         return 1
 
     if sys.argv[1:]:
-        print("这个脚本只构建便携版（文件夹版），不接受参数；")
+        print("这个脚本只构建客户端（文件夹版），不接受参数；")
         print("客户端单文件版自 v1.4.3 起不再构建。")
         return 2
 

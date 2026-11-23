@@ -96,7 +96,7 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 .venv\Scripts\python.exe -m heartapp list
 .venv\Scripts\python.exe -m heartapp probe "设备名"
 
-# 重新打包便携版（只构建文件夹版）
+# 重新打包客户端（只构建文件夹版）
 .venv\Scripts\python.exe tools\build_exe.py
 
 # 界面截图（只用合成数据，改动界面后用来肉眼确认；生成物在 _test_output/）
@@ -148,22 +148,22 @@ GUI 线程 ──poll_events()──> queue.Queue ──<─ engine 后台线程
 ## 7. 数据与隐私（红线）
 
 - **心率是个人健康数据**，`data/heartrate.db` 已在 `.gitignore` 里，**绝不能提交**
-- 数据一律放在 `程序目录/data`（便携版和源码运行都一样）；程序目录不可写才退回 `%LOCALAPPDATA%\HeartApp`
+- 数据一律放在 `程序目录/data`（解压版和源码运行都一样）；程序目录不可写才退回 `%LOCALAPPDATA%\HeartApp`
 - 不要在任何日志里打印完整心率时间序列
 - 签名私钥（`.pfx` / `*.cer` 私钥证书）绝不入库
 
 ## 8. 打包相关的坑
 
-- **客户端只构建文件夹版（便携 zip）**：单文件版自 v1.4.3 起不再构建/发布
+- **客户端只构建文件夹版（一个 zip）**：单文件版自 v1.4.3 起不再构建/发布
   （启动慢、部分机器解压失败、易被杀毒误判）。服务端 Windows exe 仍是单文件，
   必须保留 `--runtime-tmpdir .`。
-- 普通 EXE、便携版、源码运行**一律**使用 `程序目录/data`；只有程序目录不可写时才退回 `%LOCALAPPDATA%\HeartApp`。
+- 普通 EXE、解压版、源码运行**一律**使用 `程序目录/data`；只有程序目录不可写时才退回 `%LOCALAPPDATA%\HeartApp`。
 - 打包后要签名（`tools/sign_exe.ps1`，`build_exe.py` 会自动调）
 - **`.ps1` 脚本必须存成 UTF-8 with BOM**：Windows PowerShell 5.1 读无 BOM 文件会按
   GBK 解释，中文全乱并破坏字符串引号。用编辑器保存时注意
 - **`.bat` 工作区文件必须使用 CRLF 换行**：UTF-8 中文提示在 LF 文件中可能被 cmd.exe
   截断并当作命令执行。`.gitattributes` 已配置规则，新建或改写后仍需检查实际字节。
-- **发布用 `tools/build_release.py`**：一个版本一个 Release，客户端（1 个便携 zip）
+- **发布用 `tools/build_release.py`**：一个版本一个 Release，客户端（1 个 zip）
   + 服务端（4 个）+ 服务端面板放在一起；签名必须在压缩之前
 - PyInstaller `--exclude-module`：GUI 版排除 `tkinter`（已无代码引用，只为瘦身）；
   CLI 版还要排除 `PySide6` + `shiboken6`（否则 CLI 也有 37MB）

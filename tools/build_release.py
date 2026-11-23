@@ -38,9 +38,9 @@ V = VERSION
 
 #: 发布件的 ASCII 名称。中文文件名经 gh 上传会被截断。
 ARTIFACTS = {
-    # 客户端只发便携版（解压即用、无 _MEI、数据在程序旁）；
-    # 单文件版和独立命令行版不再发布，命令行版仍包含在便携 zip 内。
-    "client_zip":     f"HeartApp-v{V}-win64-portable.zip",
+    # 客户端只有一个包：解压即用、数据在程序旁。
+    # 单文件版和独立命令行版不再发布，命令行版包含在这个 zip 内。
+    "client_zip":     f"HeartApp-v{V}-win64.zip",
     # -linux.tar.gz 留给自包含包：一键安装脚本按这个名字下载，装完不需要 Python。
     # 旧式源码包改名 -linux-source.tar.gz 作为备用。
     "server_exe":     f"HeartApp-Server-v{V}-win64.exe",
@@ -84,8 +84,8 @@ def assemble() -> list:
     OUT.mkdir(parents=True)
     produced: list = []
 
-    print("  客户端便携版（压缩，唯一的客户端产物）…")
-    _zip_dir(DIST / "心率记录仪-便携版", OUT / ARTIFACTS["client_zip"])
+    print("  客户端（压缩，唯一的客户端产物）…")
+    _zip_dir(DIST / "心率记录仪", OUT / ARTIFACTS["client_zip"])
     produced.append(OUT / ARTIFACTS["client_zip"])
 
     print("  服务端三个包 …")

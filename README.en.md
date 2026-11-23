@@ -51,7 +51,7 @@ Any brand that follows the spec works — OPPO, Huawei, Xiaomi, Samsung, Garmin,
 
 | File | Notes |
 |---|---|
-| **`HeartApp-<ver>-win64-portable.zip`** | **The only client package**: unzip and run `图形界面版\心率记录仪.exe` (the CLI build is in the sibling `命令行版` folder) |
+| **`HeartApp-<ver>-win64.zip`** | **The only client package**: unzip and run `图形界面版\心率记录仪.exe` (the CLI build is in the sibling `命令行版` folder) |
 
 > Put it in a **writable folder** (not `C:\Program Files`). On first launch Windows
 > SmartScreen may warn — click "More info" → "Run anyway".
@@ -109,7 +109,7 @@ Windows users can use the server panel (GUI). See [server docs](server/README.md
 
 ## Where the data lives
 
-**`data\heartrate.db` next to the executable** (SQLite) — same for the portable build and
+**`data\heartrate.db` next to the executable** (SQLite) — same for the packaged build and
 when running from source, and nothing is created in your user profile.
 Move the whole folder when you move or update the app; only if the program folder is not
 writable does it fall back to `%LOCALAPPDATA%\HeartApp`.

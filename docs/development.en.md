@@ -41,11 +41,11 @@ Screenshots can be regenerated (synthetic data only, never committed):
 .venv\Scripts\python.exe tools\build_exe.py
 ```
 
-Two onedir artifacts (signed automatically), packed into the portable zip:
+Two onedir artifacts (signed automatically), packed into the client zip:
 
 ```
-dist\心率记录仪-便携版\图形界面版\...      onedir · GUI
-dist\心率记录仪-便携版\命令行版\...        onedir · CLI
+dist\心率记录仪\图形界面版\...      onedir · GUI
+dist\心率记录仪\命令行版\...        onedir · CLI
 ```
 
 > The client onefile build is no longer built or shipped since v1.4.3: it self-extracts on
