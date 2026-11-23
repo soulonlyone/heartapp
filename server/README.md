@@ -138,7 +138,7 @@ curl -fsSL https://gitee.com/<你的用户名>/heartapp/raw/main/server/deploy.s
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
-sudo bash deploy.sh --version v1.4.0 --mirror https://ghfast.top/
+sudo bash deploy.sh            # 版本号自动取最新
 ```
 
 如果连脚本本身都下载不下来（`raw.githubusercontent.com` 也不通），用下面的办法 2。
@@ -146,14 +146,14 @@ sudo bash deploy.sh --version v1.4.0 --mirror https://ghfast.top/
 **2. 在能上网的电脑下载，再传到服务器**（最稳）
 
 ```sh
-# 浏览器打开 releases/latest，下载 HeartApp-Server-v<版本>-linux.tar.gz
-scp HeartApp-Server-v1.4.0-linux.tar.gz you@server:/tmp/
+# 浏览器打开 releases/latest，下载 HeartApp-Server-v<版本>-linux.tar.gz（自包含包）
+scp HeartApp-Server-v<版本>-linux.tar.gz you@server:/tmp/
 ```
 
 ```sh
 # 服务器上
-cd /tmp && tar -xzf HeartApp-Server-v1.4.0-linux.tar.gz
-cd heartapp-server-1.4.0 && sudo bash server/install-linux.sh
+cd /tmp && tar -xzf HeartApp-Server-v<版本>-linux.tar.gz
+cd heartapp-server-<版本> && sudo bash server/install-linux.sh
 ```
 
 **3. 直接放到有一台能访问 GitHub 的机器上编译/运行**（服务端只需要 Python + websockets）

@@ -51,8 +51,7 @@ Any brand that follows the spec works — OPPO, Huawei, Xiaomi, Samsung, Garmin,
 
 | File | Notes |
 |---|---|
-| **`HeartApp-<ver>-win64-portable.zip`** | **Recommended**: unzip and run `图形界面版\心率记录仪.exe` |
-| `HeartApp-<ver>-win64.exe` | Single-file build; self-extracts on every start, a bit slower |
+| **`HeartApp-<ver>-win64-portable.zip`** | **The only client package**: unzip and run `图形界面版\心率记录仪.exe` (the CLI build is in the sibling `命令行版` folder) |
 
 > Put it in a **writable folder** (not `C:\Program Files`). On first launch Windows
 > SmartScreen may warn — click "More info" → "Run anyway".
@@ -100,16 +99,18 @@ The script is served through the `ghfast.top` mirror; inside, the server package
 falls back through direct GitHub and two more mirrors, each capped at 25 s.
 Swap the prefix to `https://gh-proxy.com/` if this mirror is down.
 
-The installer then asks for a password (shown as `*`, never as plain text), confirms the port and registers a systemd service.
-If the server cannot reach GitHub, add a mirror prefix: `--version v1.4.0 --mirror https://ghfast.top/`
+The installer then asks for a password (shown as `*`, never as plain text), an optional
+**public IP** (enables automatic TLS on 443), the port, and registers a systemd service.
+
+For unattended deployments use `--non-interactive` with the password in
 `HEARTAPP_INSTALL_PASSWORD` — passing it on the command line leaves it in shell history.
 
 Windows users can use the server panel (GUI). See [server docs](server/README.md).
 
 ## Where the data lives
 
-**`data\heartrate.db` next to the executable** (SQLite) — same for the portable and
-single-file builds, and nothing is created in your user profile.
+**`data\heartrate.db` next to the executable** (SQLite) — same for the portable build and
+when running from source, and nothing is created in your user profile.
 Move the whole folder when you move or update the app; only if the program folder is not
 writable does it fall back to `%LOCALAPPDATA%\HeartApp`.
 

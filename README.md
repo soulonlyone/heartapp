@@ -47,8 +47,7 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等符合标准即可，不绑定品牌
 
 | 文件 | 说明 |
 |---|---|
-| **`HeartApp-<版本>-win64-portable.zip`** | **推荐**：解压后双击 `图形界面版\心率记录仪.exe` |
-| `HeartApp-<版本>-win64.exe` | 单文件版，一个 exe 搞定；每次启动要解压，稍慢 |
+| **`HeartApp-<版本>-win64-portable.zip`** | **唯一的客户端包**：解压后双击 `图形界面版\心率记录仪.exe`（命令行版在同级的 `命令行版` 目录） |
 
 > 放在**可写目录**，不要放 `C:\Program Files`。首次运行 SmartScreen 提示点「更多信息」→「仍要运行」。
 
@@ -93,8 +92,8 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/soulonlyone/hear
 
 装的过程中会设置**服务器访问密码**（输入时显示 *，不回显明文；客户端联机时填它，
 不是房间密码）、确认端口，然后注册 systemd 服务。
-国内直连 GitHub 超时可加镜像：`--version v1.4.0 --mirror https://ghfast.top/`
-（详见 [服务端文档](server/README.md)）。
+装的时候填**公网 IP** 会自动申请证书、监听 443（客户端用 `wss://IP`），
+填本机地址则只监听 127.0.0.1。详见 [服务端文档](server/README.md)。
 无人值守部署用 `--non-interactive` 并把密码放进环境变量 `HEARTAPP_INSTALL_PASSWORD`
 （命令行传密码会留在 shell 历史里）。
 
@@ -102,7 +101,7 @@ Windows 可用服务端面板（可视化开服），详见 [服务端文档](se
 
 ## 数据在哪
 
-**程序目录下的 `data\heartrate.db`**（SQLite）——便携版、单文件版都一样，不在用户目录里建文件。
+**程序目录下的 `data\heartrate.db`**（SQLite）——便携版和源码运行都一样，不在用户目录里建文件。
 移动或更新程序时把整个文件夹带走；只有程序目录不可写时才退回 `%LOCALAPPDATA%\HeartApp`。
 
 ## 常见问题
