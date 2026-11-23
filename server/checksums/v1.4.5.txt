@@ -1,0 +1,5 @@
+a6a5446c64279313f5b05c37f57af10089bf9397f6f8c2fcbce853b1c132fe21  HeartApp-Server-Panel-v1.4.5-win64.zip
+1e8d091a0cb16217084cd090041419d00711ffa0ea3981bbdb31d62edea30e6b  HeartApp-Server-v1.4.5-docker.tar.gz
+65af8c8afd5d808d8c02d869e02bf95713f6712ad9ae2744723a6af6db1cf75c  HeartApp-Server-v1.4.5-linux.tar.gz
+95a55a446201fae3f505b14ae87313850037bbcebabdff85a2138214b4966fd2  HeartApp-Server-v1.4.5-win64.exe
+3ffcacbaa32eaf0bbd64f690a8bef19c77e927603dfa0fba4723592a84c97fd2  HeartApp-v1.4.5-win64.zip
