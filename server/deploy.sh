@@ -111,21 +111,23 @@ fetch() {
 # ---- 确定版本 ----
 
 if [ -z "$VERSION" ]; then
-    say "查询最新 Release …"
-    TAG="$(curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-        | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
-        | sed 's/.*"\([^"]*\)"$/\1/')" || true
+    # 优先读仓库里的 server/LATEST：由发布流程维护，且包含预发布版
+    # （GitHub 的 releases/latest 会跳过 prerelease，会把预发布版装成旧版）。
+    say "查询最新版本 …"
+    for source in \
+        "https://raw.githubusercontent.com/${REPO}/main/server/LATEST" \
+        "https://cdn.jsdelivr.net/gh/${REPO}@main/server/LATEST"; do
+        TAG="$(curl -fsSL --connect-timeout 8 --max-time 20 "$source" 2>/dev/null \
+            | tr -d '[:space:]')" || true
+        [ -n "${TAG:-}" ] && break
+    done
     if [ -z "${TAG:-}" ]; then
-        say "  api.github.com 不可达，改从仓库读取版本号"
-        for source in \
-            "https://raw.githubusercontent.com/${REPO}/main/server/LATEST" \
-            "https://cdn.jsdelivr.net/gh/${REPO}@main/server/LATEST"; do
-            TAG="$(curl -fsSL --connect-timeout 8 --max-time 20 "$source" 2>/dev/null \
-                | tr -d '[:space:]')" || true
-            [ -n "${TAG:-}" ] && break
-        done
+        say "  仓库版本号不可达，改查 GitHub API"
+        TAG="$(curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+            | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+            | sed 's/.*"\([^"]*\)"$/\1/')" || true
     fi
-    [ -n "${TAG:-}" ] || die "查不到最新版本，请用 --version 指定，例如 --version v1.4.0"
+    [ -n "${TAG:-}" ] || die "查不到最新版本，请用 --version 指定，例如 --version v1.4.3"
 else
     TAG="$VERSION"
 fi
