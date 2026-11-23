@@ -1,23 +1,20 @@
-"""把 heartapp 打包成免安装 exe。
+"""把 heartapp 打包成免安装的便携版（只有文件夹版）。
 
     .venv\\Scripts\\python.exe tools\\build_exe.py
 
 产物（都在 dist\\ 下）：
 
-    心率记录仪.exe                 单文件版，图形界面，双击即用（方便拷贝）
-    心率记录仪-命令行.exe          单文件版，命令行
-    心率记录仪-便携版\\心率记录仪.exe   文件夹版，启动更快、更不容易被杀软误报
+    心率记录仪-便携版\\图形界面版\\心率记录仪.exe   图形界面
+    心率记录仪-便携版\\命令行版\\心率记录仪-命令行.exe 命令行
 
-为什么还要有个「文件夹版」
---------------------------
-单文件版每次启动都要把自己解压到临时目录。PyInstaller 出于安全考虑，会给这个
-临时目录设置**独立权限（不继承父目录）**。在受限的沙箱环境里这会丢掉沙箱授予的
-写权限，导致解压失败：
+为什么只发文件夹版
+------------------
+单文件版每次启动都要把自己解压到临时目录：启动慢（~1.5s vs ~0.3s），
+部分机器上解压会直接失败（`Could not create temporary directory!`），
+而且更溶液被杀毒软件误判为打包器。文件夹版不需要运行时解压，
+所以从 v1.4.3 起客户端只发布便携 zip，不再构建单文件版。
 
-    [PYI-xxx:ERROR] Failed to extract VCRUNTIME140.dll: fopen: Permission denied
-
-普通用户双击运行时不存在这个问题（解压目录只授权给当前用户，而当前用户正是启动者）。
-但文件夹版压根不需要运行时解压，所以更稳、启动也快得多（实测 ~0.3s vs ~1.5s）。
+（服务端 Windows exe 仍是单文件，见 tools/build_relay.py。）
 
 刻意采用「先用 ASCII 名字打包、再用 Python 改名」：
 把中文参数从 .bat 传给 PyInstaller 会受控制台代码页影响，容易变乱码；
@@ -39,16 +36,6 @@ ICON = ROOT / "heartapp.ico"
 
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
-
-#: 单文件版的解压目录：`.` = exe 自己所在的目录。
-#:
-#: 默认解压到系统临时目录（%TEMP%）。部分机器上这会直接失败，PyInstaller 报
-#: `Could not create temporary directory!`，而且发生在 Python 代码运行之前，
-#: 连日志都留不下。本机实测连 hello-world 单文件版都会失败，改成解压到 exe
-#: 旁边就正常，所以必须显式指定。
-#:
-#: 便携版（文件夹版）不需要解包，不受此限制，是推荐的下载方式。
-RUNTIME_TMPDIR = "."
 
 EXCLUDES = [
     "matplotlib", "numpy", "pandas", "PIL", "pytest",
@@ -171,14 +158,12 @@ def _remove_tree(path: Path) -> None:
         )
 
 
-def _prepare_dist(groups: set) -> None:
+def _prepare_dist() -> None:
     DIST.mkdir(parents=True, exist_ok=True)
-    if "onefile" in groups:
-        for name in (GUI_EXE, CLI_EXE, "_internal", "HeartApp.exe", "HeartAppCLI.exe"):
-            _remove_tree(DIST / name)
-    if "onedir" in groups:
-        for name in (PORTABLE_DIR, "HeartAppPortable", "HeartAppCLIPortable"):
-            _remove_tree(DIST / name)
+    # 顺带清掉旧版本可能留下的单文件产物，避免它们混进发布目录。
+    for name in (PORTABLE_DIR, "HeartAppPortable", "HeartAppCLIPortable",
+                 GUI_EXE, CLI_EXE, "_internal", "HeartApp.exe", "HeartAppCLI.exe"):
+        _remove_tree(DIST / name)
 
 
 def _clean_runtime_data() -> None:
@@ -190,53 +175,12 @@ def _clean_runtime_data() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 单文件版
-# ---------------------------------------------------------------------------
-
-
-def build_gui_onefile() -> int:
-    print("\n[1/4] 单文件 图形界面版 …")
-    return run(
-        [PYINSTALLER] + _base() + _excludes() + [
-            "--onefile",
-            "--windowed",
-            "--exclude-module", "tkinter",
-            "--runtime-tmpdir", RUNTIME_TMPDIR,
-            "--version-file", str(_version_file("HeartApp", "HeartApp 心率监控", "HeartApp.exe")),
-            "--name", "HeartApp",
-            "--add-data", f"{ICON};.",
-            "--workpath", str(BUILD / "onefile_gui"),
-            str(ROOT / "packaging" / "qt_entry.py"),
-        ]
-    )
-
-
-def build_cli_onefile() -> int:
-    print("\n[2/4] 单文件 命令行版 …")
-    return run(
-        [PYINSTALLER] + _base() + _excludes() + [
-            "--onefile",
-            "--console",
-            "--runtime-tmpdir", RUNTIME_TMPDIR,
-            "--version-file", str(_version_file("HeartAppCLI", "HeartApp 命令行", "HeartAppCLI.exe")),
-            "--name", "HeartAppCLI",
-            # 命令行版不含任何图形界面
-            "--exclude-module", "tkinter",
-            "--exclude-module", "PySide6",
-            "--exclude-module", "shiboken6",
-            "--workpath", str(BUILD / "onefile_cli"),
-            str(ROOT / "packaging" / "cli_entry.py"),
-        ]
-    )
-
-
-# ---------------------------------------------------------------------------
 # 文件夹版（不解压，最稳）
 # ---------------------------------------------------------------------------
 
 
 def build_gui_onedir() -> int:
-    print("\n[3/4] 文件夹 图形界面版 …")
+    print("\n[1/2] 文件夹 图形界面版 …")
     return run(
         [PYINSTALLER] + _base() + _excludes() + [
             "--onedir",
@@ -252,7 +196,7 @@ def build_gui_onedir() -> int:
 
 
 def build_cli_onedir() -> int:
-    print("\n[4/4] 文件夹 命令行版 …")
+    print("\n[2/2] 文件夹 命令行版 …")
     return run(
         [PYINSTALLER] + _base() + _excludes() + [
             "--onedir",
@@ -282,13 +226,6 @@ def _rename_file(src: Path, dst: Path) -> bool:
     src.rename(dst)
     print(f"  {src.name}  ->  {dst.name}")
     return True
-
-
-def rename_onefile() -> bool:
-    print("\n重命名单文件版 …")
-    return _rename_file(DIST / "HeartApp.exe", DIST / GUI_EXE) and _rename_file(
-        DIST / "HeartAppCLI.exe", DIST / CLI_EXE
-    )
 
 
 def rename_onedir() -> bool:
@@ -357,38 +294,27 @@ def main() -> int:
         print(r"  .venv\Scripts\python.exe -m pip install pyinstaller")
         return 1
 
-    # 可以不传参数打全部，也可以只打其中一类：
-    #   tools\build_exe.py onefile     只打单文件版
-    #   tools\build_exe.py onedir      只打文件夹版
-    wanted = {a.lower() for a in sys.argv[1:]} or {"onefile", "onedir"}
-    unknown = wanted - {"onefile", "onedir"}
-    if unknown:
-        print(f"未知参数：{', '.join(sorted(unknown))}（只支持 onefile / onedir）")
+    if sys.argv[1:]:
+        print("这个脚本只构建便携版（文件夹版），不接受参数；")
+        print("客户端单文件版自 v1.4.3 起不再构建。")
         return 2
 
-    _prepare_dist(wanted)
+    _prepare_dist()
 
     print("生成图标 …")
     if run([VENV_PY, ROOT / "tools" / "make_icon.py"]) != 0:
         return 1
 
     steps = [
-        ("单文件 图形界面版", "onefile", build_gui_onefile),
-        ("单文件 命令行版", "onefile", build_cli_onefile),
-        ("文件夹 图形界面版", "onedir", build_gui_onedir),
-        ("文件夹 命令行版", "onedir", build_cli_onedir),
+        ("文件夹 图形界面版", build_gui_onedir),
+        ("文件夹 命令行版", build_cli_onedir),
     ]
-    for label, group, fn in steps:
-        if group not in wanted:
-            print(f"\n跳过 {label}（未选中 {group}）")
-            continue
+    for label, fn in steps:
         if fn() != 0:
             print(f"\n{label} 打包失败。")
             return 1
 
-    if "onefile" in wanted and not rename_onefile():
-        return 1
-    if "onedir" in wanted and not rename_onedir():
+    if not rename_onedir():
         return 1
 
     print("\n清理运行期数据 …")

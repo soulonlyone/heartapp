@@ -41,24 +41,23 @@ Screenshots can be regenerated (synthetic data only, never committed):
 .venv\Scripts\python.exe tools\build_exe.py
 ```
 
-Four artifacts (signed automatically):
+Two onedir artifacts (signed automatically), packed into the portable zip:
 
 ```
-dist\心率记录仪.exe                     onefile · GUI
-dist\心率记录仪-命令行.exe               onefile · CLI
-dist\心率记录仪-便携版\图形界面版\...      onedir · GUI  (recommended distribution)
+dist\心率记录仪-便携版\图形界面版\...      onedir · GUI
 dist\心率记录仪-便携版\命令行版\...        onedir · CLI
 ```
 
-**Two hard constraints — do not change them casually:**
+> The client onefile build is no longer built or shipped since v1.4.3: it self-extracts on
+> every start (slow, and outright fails on some machines) and is more likely to trip
+> antivirus heuristics.
 
-1. **The onefile build must keep `--runtime-tmpdir .`**
-   By default PyInstaller extracts into the system temp directory, which fails on some
-   machines (`Could not create temporary directory!`, before any Python runs, so not even a
-   log is produced). A hello-world onefile reproduced this locally. The onedir build needs
-   no extraction, which is why it is the recommended download.
-2. **Exclude `tkinter` in the GUI build, plus `PySide6`/`shiboken6` in the CLI build**
+**Two constraints — do not change them casually:**
+
+1. **Exclude `tkinter` in the GUI build, plus `PySide6`/`shiboken6` in the CLI build**
    otherwise the CLI artifact is also ~37 MB.
+2. **The Windows server exe is still a onefile build** (`tools/build_relay.py`) and must keep
+   `--runtime-tmpdir .`, otherwise extraction fails on some machines.
 
 ## Releasing
 
