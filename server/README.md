@@ -56,11 +56,17 @@ sudo systemctl start heartapp-ip-renew.service
 和 [Certbot IP 证书说明](https://letsencrypt.org/2026/03/11/shorter-certs-certbot)。
 
 ```sh
-u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; s=; for p in '' 'https://ghfast.top/' 'https://gh-proxy.com/' 'https://ghproxy.net/'; do s=$(curl -fsSL --connect-timeout 8 --max-time 25 "${p}${u}" 2>/dev/null) && break; done; [ -n "$s" ] && echo "$s" | sudo bash || echo "所有下载源都失败，可手动下载 deploy.sh 后 sudo bash deploy.sh" >&2
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-直连 GitHub 不通时自动换镜像，每个源最多等 25 秒，全部失败才报错。
-装的过程中会进入向导（隐藏输入密码、确认端口、确认安装）。
+脚本经 `ghfast.top` 镜像获取，脚本内部下载服务端包时再依次尝试直连和另外两个镜像，
+每个源最多等 25 秒。镜像不通就把前缀换成 `https://gh-proxy.com/`，或者：
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh
+sudo bash deploy.sh          # 版本号会依次从 GitHub API、仓库、jsdelivr 读取
+```
+装的过程中会进入向导（密码输入时显示 `*`、确认端口、确认安装）。
 
 运行后进入向导：**设置服务器访问密码（输入时显示 \* ，不回显明文，输两次）** → 确认端口 → 确认安装。
 

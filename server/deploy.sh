@@ -117,9 +117,13 @@ if [ -z "$VERSION" ]; then
         | sed 's/.*"\([^"]*\)"$/\1/')" || true
     if [ -z "${TAG:-}" ]; then
         say "  api.github.com 不可达，改从仓库读取版本号"
-        TAG="$(curl -fsSL --connect-timeout 10 --max-time 20 \
-            "https://raw.githubusercontent.com/${REPO}/main/server/LATEST" 2>/dev/null \
-            | tr -d '[:space:]')" || true
+        for source in \
+            "https://raw.githubusercontent.com/${REPO}/main/server/LATEST" \
+            "https://cdn.jsdelivr.net/gh/${REPO}@main/server/LATEST"; do
+            TAG="$(curl -fsSL --connect-timeout 8 --max-time 20 "$source" 2>/dev/null \
+                | tr -d '[:space:]')" || true
+            [ -n "${TAG:-}" ] && break
+        done
     fi
     [ -n "${TAG:-}" ] || die "查不到最新版本，请用 --version 指定，例如 --version v1.4.0"
 else
@@ -143,6 +147,7 @@ fetch "$BASE/$ASSET" "$TMP/$ASSET" || die "下载失败，请检查上面的网�
 # 优先用和包同源的 SHA256SUMS.txt；镜像站经常拿不到这种小文件，
 # 再退回仓库里的 server/checksums/v<version>.txt（与本脚本同源，不经过镜像）。
 CHECKSUM_BASE="${HEARTAPP_CHECKSUM_BASE_URL:-https://raw.githubusercontent.com/${REPO}/main/server/checksums}"
+CHECKSUM_MIRROR="https://cdn.jsdelivr.net/gh/${REPO}@main/server/checksums"
 
 pick_expected() {
     # sha256sum 在不同平台输出 "hash  file" 或 "hash *file"（二进制标记），两种都要认。
@@ -156,10 +161,12 @@ if fetch "$BASE/SHA256SUMS.txt" "$TMP/SHA256SUMS.txt" quiet; then
     EXPECTED="$(pick_expected "$TMP/SHA256SUMS.txt")"
 fi
 if [ -z "$EXPECTED" ]; then
-    if fetch "$CHECKSUM_BASE/${TAG}.txt" "$TMP/checksums.txt" quiet; then
-        EXPECTED="$(pick_expected "$TMP/checksums.txt")"
-        [ -n "$EXPECTED" ] && say "校验和取自仓库 server/checksums/${TAG}.txt"
-    fi
+    for base in "$CHECKSUM_BASE" "$CHECKSUM_MIRROR"; do
+        if fetch "$base/${TAG}.txt" "$TMP/checksums.txt" quiet; then
+            EXPECTED="$(pick_expected "$TMP/checksums.txt")"
+            [ -n "$EXPECTED" ] && say "校验和取自 ${base}/${TAG}.txt" && break
+        fi
+    done
 fi
 if [ -n "$EXPECTED" ] && [ -n "$SHA_TOOL" ]; then
     if [ "$SHA_TOOL" = "sha256sum" ]; then

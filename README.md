@@ -85,11 +85,11 @@ OPPO / 华为 / 小米 / 三星 / Garmin 等符合标准即可，不绑定品牌
 服务器需要自己部署，一行安装：
 
 ```sh
-u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; s=; for p in '' 'https://ghfast.top/' 'https://gh-proxy.com/' 'https://ghproxy.net/'; do s=$(curl -fsSL --connect-timeout 8 --max-time 25 "${p}${u}" 2>/dev/null) && break; done; [ -n "$s" ] && echo "$s" | sudo bash || echo "所有下载源都失败，可手动下载 deploy.sh 后 sudo bash deploy.sh" >&2
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-直连 GitHub 不通时它会自动换镜像（ghfast.top / gh-proxy.com / ghproxy.net），
-不会无限等待；全部失败才提示手动下载。
+脚本走 `ghfast.top` 镜像；脚本内部下载服务端包时还会再试直连和另外两个镜像，
+全部失败才报错，不会无声挂住。镜像也不通就把前缀换成 `https://gh-proxy.com/`。
 
 装的过程中会设置**服务器访问密码**（输入时显示 *，不回显明文；客户端联机时填它，
 不是房间密码）、确认端口，然后注册 systemd 服务。

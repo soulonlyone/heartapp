@@ -93,11 +93,12 @@ most 30 minutes and are cleared when you leave · the server stores no heart-rat
 Deploy the server yourself, one line:
 
 ```sh
-u=https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh; s=; for p in '' 'https://ghfast.top/' 'https://gh-proxy.com/' 'https://ghproxy.net/'; do s=$(curl -fsSL --connect-timeout 8 --max-time 25 "${p}${u}" 2>/dev/null) && break; done; [ -n "$s" ] && echo "$s" | sudo bash || echo "所有下载源都失败，可手动下载 deploy.sh 后 sudo bash deploy.sh" >&2
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/soulonlyone/heartapp/main/server/deploy.sh | sudo bash
 ```
 
-Falls back through GitHub mirrors automatically (each attempt capped at 25 s), so a blocked
-`raw.githubusercontent.com` does not hang the install.
+The script is served through the `ghfast.top` mirror; inside, the server package download
+falls back through direct GitHub and two more mirrors, each capped at 25 s.
+Swap the prefix to `https://gh-proxy.com/` if this mirror is down.
 
 The installer then asks for a password (shown as `*`, never as plain text), confirms the port and registers a systemd service.
 If the server cannot reach GitHub, add a mirror prefix: `--version v1.4.0 --mirror https://ghfast.top/`
