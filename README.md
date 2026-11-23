@@ -133,6 +133,7 @@ python -m venv .venv
 |---|---|
 | [使用指南](docs/使用指南.md) · [EN](docs/guide.en.md) | 界面、回看、数据格式、命令行、FAQ |
 | [开发与打包](docs/开发与打包.md) · [EN](docs/development.en.md) | 项目结构、测试、打包、发布 |
+| **[服务端部署指南](docs/服务端部署指南.md)** | **从零部署：选模式、安装、配置、卸载、排障** |
 | [服务端文档](server/README.md) | 部署方式、访问边界、排障 |
 | [服务端面板](server/Windows面板说明.md) | Windows 可视化开服 |
 | [签名说明](docs/签名说明.md) | 自签名证书 |

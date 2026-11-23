@@ -142,6 +142,7 @@ python -m venv .venv
 |---|---|
 | [User guide (EN)](docs/guide.en.md) · [使用指南](docs/使用指南.md) | UI, review, data formats, CLI, FAQ |
 | [Development & packaging (EN)](docs/development.en.md) · [开发与打包](docs/开发与打包.md) | Layout, tests, builds, releases |
+| **[Server deployment guide](docs/服务端部署指南.md)** (Chinese) | End-to-end: pick a mode, install, configure, uninstall, troubleshoot |
 | [Server docs](server/README.md) | Deployment, access boundaries, troubleshooting |
 | [Server panel](server/Windows面板说明.md) | Windows GUI for running the server |
 | [Code signing](docs/签名说明.md) | Self-signed certificate |
