@@ -1,6 +1,7 @@
 """systemd 单元渲染与安装/卸载的纯逻辑部分。"""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -63,6 +64,18 @@ class TestInstall(unittest.TestCase):
         self.assertIn('dry-run', rendered)
         self.assertIn('9.9.9', rendered)
         self.assertFalse(system.CURRENT.exists())
+
+    def test_release_directory_is_traversable_by_service_user(self):
+        """mkdtemp 是 0700；不放开的话 systemd 启动时会 CHDIR Permission denied。"""
+        package = self.root / 'package'
+        (package / 'runtime').mkdir(parents=True)
+        (package / 'runtime' / system.LAUNCHER_NAME).write_text('#!/bin/sh\n', encoding='utf-8')
+        with patch.object(system, 'APP_ROOT', self.root / 'app'), \
+                patch.object(system, 'RELEASES', self.root / 'app' / 'releases'):
+            release = installer._copy_release(package, '1.0.0')
+        if os.name != 'nt':
+            for path in (self.root / 'app', self.root / 'app' / 'releases', release):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o755, path)
 
     def test_missing_runtime_is_reported(self):
         package = self.root / 'package'

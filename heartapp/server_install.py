@@ -51,9 +51,13 @@ def _copy_release(package_root: Path, version: str) -> Path:
     runtime = package_root / 'runtime'
     if not runtime.is_dir():
         raise InstallError('安装包缺少 runtime/ 目录，请使用自包含安装包')
-    system.RELEASES.mkdir(parents=True, exist_ok=True)
+    for parent in (system.APP_ROOT, system.RELEASES):
+        parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(parent, 0o755)  # 服务用户要能穿过这些目录
     target = system.RELEASES / version
     temporary = Path(tempfile.mkdtemp(prefix='.release-', dir=str(system.RELEASES)))
+    # mkdtemp 建出来是 0700；不放开的话 systemd 起服务时 CHDIR 会 Permission denied。
+    os.chmod(temporary, 0o755)
     try:
         shutil.copytree(runtime, temporary / 'runtime', symlinks=True)
         for item in (temporary / 'runtime').iterdir():
@@ -62,7 +66,8 @@ def _copy_release(package_root: Path, version: str) -> Path:
         (temporary / 'runtime').rmdir()
         for path in temporary.rglob('*'):
             path.chmod(path.stat().st_mode & ~0o022)
-        os.chown(temporary, 0, 0)
+        if hasattr(os, 'chown'):
+            os.chown(temporary, 0, 0)
         if target.exists():
             shutil.rmtree(target)
         temporary.rename(target)
@@ -135,7 +140,7 @@ def _rollback(state: dict) -> None:
             system.systemctl('restart', system.SERVICE, check=False)
         else:
             system.systemctl('stop', system.SERVICE, check=False)
-        if not state['timer_was_enabled']:
+        if not state['timer_was_enabled'] and system.RENEW_TIMER.exists():
             system.systemctl('disable', '--now', 'heartapp-ip-renew.timer', check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f'  回滚未完全成功：{exc}', flush=True)
