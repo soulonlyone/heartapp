@@ -339,11 +339,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--version', action='version', version=f'HeartApp server {__version__}')
     parser.add_argument('action', nargs='?', default='status',
                         choices=('install', 'uninstall', 'status', 'config', 'cert',
-                                 'health', 'run', 'menu'))
+                                 'health', 'run', 'menu', 'acme'))
     parser.add_argument('--config', help='run 时读取的配置文件路径')
     parser.add_argument('--cert', help='run 时使用的证书')
     parser.add_argument('--key', help='run 时使用的私钥')
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == 'acme':
+        # 证书模块内部用 `heartapp-server acme ...` 调内置 Certbot。
+        try:
+            from certbot._internal.main import main as certbot_main
+        except ImportError:
+            print('这个构建没有内置 Certbot（只有自包含安装包支持证书）', file=sys.stderr)
+            return 1
+        return certbot_main(arguments[1:])
+
     if arguments and arguments[0] == 'run':
         sub = argparse.ArgumentParser(prog='heartapp-server run')
         sub.add_argument('--config', default='')
